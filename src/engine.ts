@@ -6,7 +6,7 @@
 
 import type { TtsConfig } from "./types"
 import { checkHttpServer, isHttpReady, speakHttp } from "./engine-http"
-import { cancelLocalSpeak, initLocalTts, isLocalReady, speakLocal } from "./local"
+import { cancelLocalSpeak, initLocalTts, interruptLocalSpeak, isLocalReady, speakLocal } from "./local"
 
 export async function initTts(config: TtsConfig): Promise<boolean> {
   if (config.backend === "http") {
@@ -33,4 +33,9 @@ export function isReady(config: TtsConfig): boolean {
 export function cancelTts(config: TtsConfig): void {
   if (config.backend === "http") return
   cancelLocalSpeak()
+}
+
+export function interruptTts(config: TtsConfig): void {
+  if (config.backend === "http") return
+  interruptLocalSpeak()
 }

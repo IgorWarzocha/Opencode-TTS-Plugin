@@ -10,45 +10,93 @@
  */
 
 import type { Plugin } from "@opencode-ai/plugin"
+import { mkdir } from "fs/promises"
+import { homedir } from "os"
 import * as path from "path"
 import * as url from "url"
-import { cancelTts, speak, initTts, isReady } from "./engine"
+import { cancelTts, interruptTts, speak, initTts, isReady } from "./engine"
 import { DEFAULT_CONFIG, type TtsConfig } from "./types"
 
 export const TtsReaderPlugin: Plugin = async ({ client, $ }) => {
-  const config: TtsConfig = { ...DEFAULT_CONFIG }
   const pluginRoot = path.join(path.dirname(url.fileURLToPath(import.meta.url)), "..")
-  const logFilePath = path.join(pluginRoot, `tts-reader-${Date.now()}.log`)
-  const initPayload = [
-    `${new Date().toISOString()} plugin initialized`,
-    `backend=${config.backend}`,
-    `speakOn=${config.speakOn}`,
-    `voice=${config.voice}`,
-    `speed=${config.speed}`,
-    `maxWorkers=${config.maxWorkers}`,
-  ].join("\n")
+  const configPath = path.join(homedir(), ".config", "opencode", "tts.jsonc")
 
-  await Bun.write(logFilePath, `${initPayload}\n`).catch(() => {})
-
-  const appendLog = async (message: string): Promise<void> => {
-    const existing = await Bun.file(logFilePath)
-      .text()
-      .catch(() => "")
-    const payload = `${existing}${new Date().toISOString()} ${message}\n`
-    await Bun.write(logFilePath, payload).catch(() => {})
+  const stripJsonc = (raw: string): string => {
+    const withoutComments = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "")
+    return withoutComments.replace(/,\s*([}\]])/g, "$1")
   }
 
-  const logger = { append: appendLog }
-  const globalLogger = globalThis as { __ttsReaderLogger?: typeof logger }
-  globalLogger.__ttsReaderLogger = logger
+  const defaultConfigText = `// OpenCode TTS Reader configuration (JSONC)
+{
+  // Enable/disable TTS at startup
+  "enabled": ${DEFAULT_CONFIG.enabled},
+  // "local" (CPU) or "http" (Kokoro-FastAPI)
+  "backend": "${DEFAULT_CONFIG.backend}",
+  // Kokoro-FastAPI URL when backend is http
+  "httpUrl": "${DEFAULT_CONFIG.httpUrl}",
+  // Response format: "wav", "mp3", or "pcm"
+  "httpFormat": "${DEFAULT_CONFIG.httpFormat}",
+  // "message" (each response) or "idle" (session idle)
+  "speakOn": "${DEFAULT_CONFIG.speakOn}",
+  // Voice ID
+  "voice": "${DEFAULT_CONFIG.voice}",
+  // Playback speed (0.5 - 2.0)
+  "speed": ${DEFAULT_CONFIG.speed},
+  // Max local worker processes (0 disables pool)
+  "maxWorkers": ${DEFAULT_CONFIG.maxWorkers}
+}
+`
 
-  appendLog("init: starting background TTS init").catch(() => {})
+  const loadConfig = async (): Promise<TtsConfig> => {
+    const file = Bun.file(configPath)
+    const exists = await file.exists()
+    if (!exists) {
+      await mkdir(path.dirname(configPath), { recursive: true })
+      await Bun.write(configPath, defaultConfigText)
+      return { ...DEFAULT_CONFIG }
+    }
+
+    const raw = await file.text().catch(() => "")
+    if (!raw) return { ...DEFAULT_CONFIG }
+
+    const cleaned = stripJsonc(raw)
+    try {
+      const parsed = JSON.parse(cleaned) as Partial<TtsConfig>
+      return { ...DEFAULT_CONFIG, ...parsed }
+    } catch {
+      return { ...DEFAULT_CONFIG }
+    }
+  }
+
+  const config: TtsConfig = await loadConfig()
 
   const promptState = {
     buffer: "",
     skipCommandExecuted: false,
     lastToggleSource: "",
     lastToggleTime: 0,
+  }
+
+  const sessionCache = new Map<string, boolean>()
+  let activeSessionID: string | null = null
+
+  const resolveSessionInfo = (response: unknown): { parentID?: string } | null => {
+    if (!response || typeof response !== "object") return null
+    if ("data" in response && response.data && typeof response.data === "object") {
+      return response.data as { parentID?: string }
+    }
+    return response as { parentID?: string }
+  }
+
+  const isChildSession = async (sessionID: string): Promise<boolean> => {
+    const cached = sessionCache.get(sessionID)
+    if (cached !== undefined) return cached
+
+    const response = await client.session.get({ path: { id: sessionID } }).catch(() => undefined)
+    const info = resolveSessionInfo(response)
+    const isChild = Boolean(info && info.parentID)
+    sessionCache.set(sessionID, isChild)
+    return isChild
   }
 
   const extractNotice = (raw: string): string => {
@@ -83,7 +131,6 @@ export const TtsReaderPlugin: Plugin = async ({ client, $ }) => {
     const modeLabel = config.speakOn === "message" ? "per-message" : "on-idle"
 
     if (success) {
-      appendLog(`tts ready (${backendLabel}, ${modeLabel})`).catch(() => {})
       try {
         await client.tui.showToast({
           body: {
@@ -95,7 +142,6 @@ export const TtsReaderPlugin: Plugin = async ({ client, $ }) => {
         })
       } catch {}
     } else {
-      appendLog(`tts init failed (${backendLabel})`).catch(() => {})
       const helpMsg =
         config.backend === "http"
           ? `Cannot reach ${config.httpUrl}. Start server: docker run -d --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:latest`
@@ -137,30 +183,45 @@ export const TtsReaderPlugin: Plugin = async ({ client, $ }) => {
     const wantsOn = args.includes("on") || args.includes("enable")
     const wantsOff = args.includes("off") || args.includes("disable")
 
+    let nextEnabled = config.enabled
     if (wantsOn) {
-      config.enabled = true
+      nextEnabled = true
     } else if (wantsOff) {
-      config.enabled = false
+      nextEnabled = false
     } else {
-      config.enabled = !config.enabled
+      nextEnabled = !config.enabled
     }
+
+    const previous = {
+      backend: config.backend,
+      maxWorkers: config.maxWorkers,
+      httpUrl: config.httpUrl,
+    }
+
+    const loaded = await loadConfig()
+    Object.assign(config, loaded)
+    config.enabled = nextEnabled
+
+    const backendChanged = config.backend !== previous.backend
+    const maxWorkersChanged = config.maxWorkers !== previous.maxWorkers
+    const httpUrlChanged = config.httpUrl !== previous.httpUrl
 
     if (!config.enabled) {
       cancelTts(config)
     }
 
-    const status = config.enabled ? "enabled" : "disabled"
-    appendLog(`command: tts ${status} (${args || "toggle"}) from ${promptState.lastToggleSource}`).catch(() => {})
-
     if (config.enabled) {
+      if (backendChanged || maxWorkersChanged || httpUrlChanged) {
+        cancelTts(config)
+      }
       const ready = await initTts(config)
-      appendLog(`command: tts init ${ready ? "ready" : "failed"}`).catch(() => {})
     }
 
     if (config.enabled && latestMessageID && latestMessageText && lastSpokenMessageID !== latestMessageID) {
-      appendLog(`command: tts speak latest ${latestMessageID}`).catch(() => {})
       void speakText(latestMessageID, latestMessageText)
     }
+
+    const status = config.enabled ? "enabled" : "disabled"
 
     try {
       await client.tui.showToast({
@@ -177,17 +238,22 @@ export const TtsReaderPlugin: Plugin = async ({ client, $ }) => {
   // Helper to clean and speak text
   async function speakText(messageID: string, text: string): Promise<void> {
     if (lastSpokenMessageID === messageID) {
-      appendLog(`speak: skip duplicate message ${messageID}`).catch(() => {})
       return
     }
     if (!config.enabled) {
-      appendLog(`speak: disabled at message ${messageID} (last toggle ${promptState.lastToggleSource})`).catch(() => {})
       cancelTts(config)
       return
     }
     if (!isReady(config)) {
-      appendLog(`speak: backend not ready for ${messageID}`).catch(() => {})
       return
+    }
+
+    if (lastSpokenMessageID && lastSpokenMessageID !== messageID) {
+      interruptTts(config)
+    }
+
+    if (lastSpokenMessageID && lastSpokenMessageID !== messageID) {
+      interruptTts(config)
     }
 
     lastSpokenMessageID = messageID
@@ -198,47 +264,46 @@ export const TtsReaderPlugin: Plugin = async ({ client, $ }) => {
       .trim()
 
     if (cleanText.length === 0) {
-      appendLog(`speak: empty text for ${messageID}`).catch(() => {})
       return
     }
 
-    appendLog(`speak: start ${messageID} (${cleanText.length} chars)`).catch(() => {})
     try {
       await speak(cleanText, config, $)
-      appendLog(`speak: done ${messageID}`).catch(() => {})
     } catch (error) {
-      const message = error instanceof Error ? error.message : "unknown error"
-      const stack = error instanceof Error && error.stack ? `\n${error.stack}` : ""
-      appendLog(`speak: error ${messageID}: ${message}${stack}`).catch(() => {})
+      // Silently ignore errors
     }
   }
 
   return {
+    "chat.message": async (input) => {
+      activeSessionID = input.sessionID
+    },
     "experimental.chat.system.transform": async (_, output) => {
       if (!config.enabled) return
       if (!ttsModeNotice) return
+      if (!activeSessionID) return
+      const isChild = await isChildSession(activeSessionID)
+      if (isChild) return
       output.system.push(ttsModeNotice)
-      appendLog("system: appended tts notice").catch(() => {})
     },
     event: async ({ event }) => {
       // Track latest assistant message text (streaming updates)
       if (event.type === "message.part.updated") {
         const part = event.properties.part
+        const isChild = await isChildSession(part.sessionID)
+        if (isChild) return
         if (part.type === "text" && !part.synthetic && !part.ignored) {
           latestMessageID = part.messageID
           latestMessageText = part.text
-          appendLog(`event: part updated ${part.messageID} (${part.text.length} chars)`).catch(() => {})
         }
       }
 
       if (event.type === "tui.prompt.append") {
         promptState.buffer = `${promptState.buffer}${event.properties.text}`
-        appendLog(`tui: prompt.append (${event.properties.text.length})`).catch(() => {})
       }
 
       if (event.type === "tui.command.execute") {
         const command = event.properties.command.trim()
-        appendLog(`tui: command.execute ${command}`).catch(() => {})
         if (command === "prompt.clear") {
           promptState.buffer = ""
         }
@@ -265,9 +330,10 @@ export const TtsReaderPlugin: Plugin = async ({ client, $ }) => {
       // "message" mode: speak when each assistant message completes
       if (config.speakOn === "message" && event.type === "message.updated") {
         const msg = event.properties.info
+        const isChild = await isChildSession(msg.sessionID)
+        if (isChild) return
         if (msg.role === "assistant" && msg.time.completed) {
           if (latestMessageID === msg.id && latestMessageText) {
-            appendLog(`event: message completed ${msg.id}`).catch(() => {})
             await speakText(msg.id, latestMessageText)
           }
         }
@@ -275,8 +341,9 @@ export const TtsReaderPlugin: Plugin = async ({ client, $ }) => {
 
       // "idle" mode: speak only the latest message when session goes idle
       if (config.speakOn === "idle" && event.type === "session.idle") {
+        const isChild = await isChildSession(event.properties.sessionID)
+        if (isChild) return
         if (latestMessageID && latestMessageText) {
-          appendLog(`event: session idle ${latestMessageID}`).catch(() => {})
           await speakText(latestMessageID, latestMessageText)
         }
       }
@@ -284,7 +351,6 @@ export const TtsReaderPlugin: Plugin = async ({ client, $ }) => {
       if (event.type === "command.executed" && event.properties.name.startsWith("tts")) {
         if (promptState.skipCommandExecuted) {
           promptState.skipCommandExecuted = false
-          appendLog("command: skipped duplicate tts toggle").catch(() => {})
           return
         }
         const name = event.properties.name.trim().toLowerCase()

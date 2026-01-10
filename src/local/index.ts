@@ -4,4 +4,4 @@
  * Keeps the public surface small and stable for the engine router.
  */
 
-export { cancelLocalSpeak, initLocalTts, isLocalReady, speakLocal } from "./speak"
+export { cancelLocalSpeak, initLocalTts, interruptLocalSpeak, isLocalReady, speakLocal } from "./speak"

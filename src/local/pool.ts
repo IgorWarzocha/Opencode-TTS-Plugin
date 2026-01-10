@@ -10,7 +10,6 @@ import { dirname, join } from "path"
 import type { FileSink, Subprocess } from "bun"
 import type { TtsConfig, VoiceName } from "../types"
 
-type Logger = { append: (message: string) => Promise<void> }
 type WorkerResult = { path: string }
 type Task = {
   id: number
@@ -50,17 +49,6 @@ export function createWorkerPool(config: TtsConfig): WorkerPool {
   const states: ProcessState[] = []
   let nextId = 0
   let readyResolved = false
-
-  const getLogger = (): Logger | null => {
-    const globalLogger = globalThis as { __ttsReaderLogger?: Logger }
-    return globalLogger.__ttsReaderLogger ?? null
-  }
-
-  const appendLog = (message: string): void => {
-    const logger = getLogger()
-    if (!logger) return
-    logger.append(message).catch(() => {})
-  }
 
   let resolveReady: () => void = () => {}
   let rejectReady: (error: Error) => void = () => {}
@@ -114,14 +102,12 @@ export function createWorkerPool(config: TtsConfig): WorkerPool {
   const handleMessage = (state: ProcessState, message: WorkerMessage) => {
     if (message.type === "ready") {
       state.ready = true
-      appendLog("pool: worker ready")
       handleReady()
       assign()
       return
     }
 
     if (message.type === "debug") {
-      appendLog(`pool: ${message.message}`)
       return
     }
 
@@ -142,7 +128,7 @@ export function createWorkerPool(config: TtsConfig): WorkerPool {
   const startReader = (state: ProcessState) => {
     const reader = state.stdout.getReader()
     const readLoop = (): void => {
-      reader.read().then((result: ReadableStreamReadResult<Uint8Array>) => {
+      reader.read().then((result) => {
         if (result.done) return
         const chunk = new TextDecoder().decode(result.value)
         state.buffer += chunk

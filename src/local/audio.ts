@@ -6,6 +6,9 @@
 
 import { tmpdir } from "os"
 import { join } from "path"
+import type { Subprocess } from "bun"
+
+let currentProcess: Subprocess | null = null
 
 export async function writeTempWav(samples: Float32Array, sampleRate: number, index: number): Promise<string> {
   const filePath = join(tmpdir(), `opencode-tts-${Date.now()}-${index}.wav`)
@@ -38,8 +41,28 @@ export async function playAudio(filePath: string): Promise<void> {
   }
 }
 
+export function cancelAudioPlayback(): void {
+  if (!currentProcess) return
+  currentProcess.kill()
+  currentProcess = null
+}
+
 async function runCommand(cmd: string[]): Promise<number> {
-  return Bun.spawn(cmd, { stderr: "ignore", stdout: "ignore" }).exited.catch(() => 1)
+  const proc = Bun.spawn(cmd, { stderr: "ignore", stdout: "ignore" }) as Subprocess
+  currentProcess = proc
+  return proc.exited
+    .then((code) => {
+      if (currentProcess === proc) {
+        currentProcess = null
+      }
+      return code
+    })
+    .catch(() => {
+      if (currentProcess === proc) {
+        currentProcess = null
+      }
+      return 1
+    })
 }
 
 async function writeWav(path: string, samples: Float32Array, sampleRate: number): Promise<void> {

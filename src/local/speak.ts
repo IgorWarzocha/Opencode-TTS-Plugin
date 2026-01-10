@@ -6,10 +6,8 @@
 
 import { unlink } from "fs/promises"
 import type { TtsConfig } from "../types"
-import { playAudio, writeTempWav } from "./audio"
+import { cancelAudioPlayback, playAudio, writeTempWav } from "./audio"
 import { createWorkerPool, type WorkerPool } from "./pool"
-
-type Logger = { append: (message: string) => Promise<void> }
 
 type OnnxConfig = {
   executionMode?: "parallel" | "sequential"
@@ -28,17 +26,6 @@ let poolInit: Promise<boolean> | null = null
 let localModel: any = null
 let localInit: Promise<boolean> | null = null
 let cancelToken = 0
-
-const getLogger = (): Logger | null => {
-  const globalLogger = globalThis as { __ttsReaderLogger?: Logger }
-  return globalLogger.__ttsReaderLogger ?? null
-}
-
-const appendLog = (message: string): void => {
-  const logger = getLogger()
-  if (!logger) return
-  logger.append(message).catch(() => {})
-}
 
 const initLocalModel = async (): Promise<any | null> => {
   try {
@@ -66,7 +53,6 @@ export async function initLocalTts(config: TtsConfig): Promise<boolean> {
     if (localModel) return true
     if (localInit) return localInit
 
-    appendLog("local: initializing model in main thread")
     localInit = initLocalModel().then((model) => {
       localModel = model
       return model !== null
@@ -77,7 +63,6 @@ export async function initLocalTts(config: TtsConfig): Promise<boolean> {
   if (poolReady && pool) return true
   if (poolInit) return poolInit
 
-  appendLog("local: creating worker pool")
   pool = createWorkerPool(config)
   poolInit = pool.ready
     .then(() => {
@@ -100,13 +85,18 @@ export function isLocalReady(): boolean {
 
 export function cancelLocalSpeak(): void {
   cancelToken += 1
+  cancelAudioPlayback()
   if (pool) {
     pool.shutdown()
     pool = null
     poolReady = false
     poolInit = null
-    appendLog("local: pool shutdown")
   }
+}
+
+export function interruptLocalSpeak(): void {
+  cancelToken += 1
+  cancelAudioPlayback()
 }
 
 export async function speakLocal(text: string, config: TtsConfig): Promise<void> {
@@ -121,15 +111,12 @@ export async function speakLocal(text: string, config: TtsConfig): Promise<void>
 
   const chunks = splitText(trimmed)
   if (chunks.length === 0) {
-    appendLog("local: no chunks after split")
     return
   }
 
-  appendLog(`local: ${chunks.length} chunks queued`)
   const files: string[] = []
 
   if (token !== cancelToken) {
-    appendLog("local: canceled before enqueue")
     return
   }
 
@@ -137,10 +124,8 @@ export async function speakLocal(text: string, config: TtsConfig): Promise<void>
     const playDirect = async () => {
       for (let i = 0; i < chunks.length; i++) {
         if (!config.enabled || token !== cancelToken) {
-          appendLog("local: stopped during direct playback")
           break
         }
-        appendLog(`local: generate chunk ${i}`)
         const audio = await localModel.generate(chunks[i], {
           voice: config.voice,
           speed: config.speed,
@@ -149,12 +134,9 @@ export async function speakLocal(text: string, config: TtsConfig): Promise<void>
         const filePath = await writeTempWav(samples, 24000, i)
         files.push(filePath)
         if (!config.enabled || token !== cancelToken) {
-          appendLog("local: stopped before play")
           break
         }
-        appendLog(`local: playing chunk ${i}`)
         await playAudio(filePath)
-        appendLog(`local: played chunk ${i}`)
       }
     }
 
@@ -167,28 +149,21 @@ export async function speakLocal(text: string, config: TtsConfig): Promise<void>
   const activePool = pool
   if (!activePool || token !== cancelToken) return
 
-  const tasks = chunks.map((chunk, index) => {
-    appendLog(`local: enqueue chunk ${index} (${chunk.length} chars)`)
+  const tasks = chunks.map((chunk) => {
     return activePool.enqueue(chunk, config)
   })
 
   const playFromWorkers = async () => {
     for (let i = 0; i < tasks.length; i++) {
       if (!config.enabled || token !== cancelToken) {
-        appendLog("local: stopped during worker playback")
         break
       }
-      appendLog(`local: await chunk ${i}`)
       const result = await tasks[i]
-      appendLog(`local: received chunk ${i} (${result.path})`)
       files.push(result.path)
       if (!config.enabled || token !== cancelToken) {
-        appendLog("local: stopped before play")
         break
       }
-      appendLog(`local: playing chunk ${i}`)
       await playAudio(result.path)
-      appendLog(`local: played chunk ${i}`)
     }
   }
 

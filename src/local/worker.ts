@@ -93,14 +93,12 @@ const model = await kokoro.KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-
 writer.send({ type: "ready" } satisfies ReadyMessage)
 
 const handleGenerate = async (message: GenerateMessage) => {
-  writer.send({ type: "debug", id: message.id, message: `generate start (${message.text.length} chars)` })
   const audio = await model.generate(message.text, {
     voice: message.voice,
     speed: message.speed,
   })
   const samples = audio.audio as Float32Array
   const path = await writeTempWav(samples, 24000, message.id)
-  writer.send({ type: "debug", id: message.id, message: `wav written (${path})` })
   writer.send({ type: "result", id: message.id, path })
 }
 

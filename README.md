@@ -1,30 +1,40 @@
-# OpenCode TTS Reader
+# OpenCode TTS Plugin
 
-Read assistant messages aloud when OpenCode sessions go idle using [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro-82M) - a lightweight, high-quality neural text-to-speech model.
+Simple TTS for OpenCode using [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro-82M).
+
+## Status
+
+**Experimental.** This plugin is still in testing and **not** on npm yet. It will be published later. For now, it is intended for **power users only**.
 
 ## Features
 
-- 🔊 **Automatic TTS** - Speaks assistant responses when sessions complete
-- 🧠 **Dual Backend** - Local CPU (kokoro-js) or HTTP GPU (Kokoro-FastAPI)
-- 🚀 **GPU Acceleration** - Optional GPU support via Docker container
-- 🖥️ **Cross-platform** - Works on Linux, macOS, and Windows
-- 🎙️ **Multiple Voices** - 11 natural-sounding voices available
+- Speaks assistant responses in message or idle mode
+- Local CPU or HTTP GPU backend
+- Toggle via `/tts:on` and `/tts:off`
+- Cross-platform playback
+- 11 voice options
+
+TTS only runs for **main sessions**. Child/subagent sessions are ignored. Messages do not overlap; a new message cuts off the previous audio.
 
 ## Quick Start
 
-### Local CPU Mode (Default)
+### Local CPU Mode (Default - zero config)
 
-Add to your `opencode.json`:
+TTS starts **disabled** by default. Enable it with `/tts:on` once the plugin is loaded.
+
+Add the path manually to your `opencode.json`, pointing at wherever you copied the plugin:
 
 ```json
 {
-  "plugin": ["opencode-tts-reader"]
+  "plugin": ["file:///home/igorw/Work/opencode/.opencode/plugin/tts-reader/src/index.ts"]
 }
 ```
 
+Copy the `command` folder to `.opencode/command/` - global or project-specific.
+
 On first use, the plugin downloads the Kokoro TTS model (~87MB). You'll see a toast notification when ready.
 
-### GPU Mode (Faster)
+### GPU Mode (Faster) - currently untested
 
 1. Start the Kokoro-FastAPI server with GPU:
 
@@ -48,6 +58,11 @@ export const DEFAULT_CONFIG: TtsConfig = {
 
 ## Requirements
 
+### System Compatibility
+
+- **Linux** - Omarchy tested
+- **macOS** / **Windows** - theoretical but untested
+
 ### Audio Player
 
 The plugin needs an audio player to play the generated speech:
@@ -63,25 +78,27 @@ The plugin needs an audio player to play the generated speech:
 
 ## Configuration
 
-Edit `src/types.ts` to customize:
+Defaults are stored at `~/.config/opencode/tts.jsonc` on first run. Edit that file to customize:
 
-```typescript
-export const DEFAULT_CONFIG: TtsConfig = {
-  // Backend selection
-  backend: "local", // "local" (CPU) or "http" (GPU server)
-  httpUrl: "http://localhost:8880", // Kokoro-FastAPI server URL
-  httpFormat: "wav", // Response format: "wav", "mp3", or "pcm"
-
-  // When to speak
-  speakOn: "message", // "message" (each response) or "idle" (only on session idle)
-
-  // Voice settings
-  voice: "af_heart", // Voice to use (see table below)
-  speed: 1.0, // Playback speed (0.5 - 2.0)
-
-  // General
-  enabled: true, // Enable/disable TTS
-  maxWorkers: 0, // Max local CPU workers (0 disables workers)
+```jsonc
+// OpenCode TTS Reader configuration (JSONC)
+{
+  // Enable/disable TTS at startup
+  "enabled": false,
+  // "local" (CPU) or "http" (Kokoro-FastAPI)
+  "backend": "local",
+  // Kokoro-FastAPI URL when backend is http
+  "httpUrl": "http://localhost:8880",
+  // Response format: "wav", "mp3", or "pcm"
+  "httpFormat": "wav",
+  // "message" (each response) or "idle" (session idle)
+  "speakOn": "message",
+  // Voice ID
+  "voice": "af_heart",
+  // Playback speed (0.5 - 2.0)
+  "speed": 1.0,
+  // Max local worker processes (0 disables pool)
+  "maxWorkers": 2,
 }
 ```
 
@@ -111,58 +128,15 @@ export const DEFAULT_CONFIG: TtsConfig = {
 **Use `message`** for real-time feedback on every response.
 **Use `idle`** for less frequent speech, only after the assistant finishes all work.
 
-## Backend Comparison
-
-| Feature         | Local (CPU)     | HTTP (GPU)              |
-| --------------- | --------------- | ----------------------- |
-| Setup           | Auto-download   | Docker container        |
-| Speed           | ~2-3x realtime  | ~10-20x realtime        |
-| Memory          | ~500MB RAM      | GPU VRAM                |
-| Dependencies    | None (bundled)  | Docker + NVIDIA drivers |
-| Network         | Offline capable | Requires HTTP access    |
-| First-run delay | ~30s download   | Container startup       |
-
 ## How It Works
 
 1. Plugin tracks the latest assistant message text via `message.part.updated` events
 2. Depending on `speakOn` mode:
    - **message**: Speaks when `message.updated` fires with a completed assistant message
    - **idle**: Speaks when `session.idle` fires
-3. Audio is played through your system's audio player
-4. Text is cleaned (code blocks replaced with "code block", markdown stripped)
-
-## Troubleshooting
-
-### HTTP backend not connecting
-
-```bash
-# Check if server is running
-curl http://localhost:8880/v1/models
-
-# View container logs
-docker logs $(docker ps -q --filter ancestor=ghcr.io/remsky/kokoro-fastapi-gpu)
-```
-
-### No audio playback on Linux
-
-```bash
-# Install PulseAudio player
-sudo apt install pulseaudio-utils
-
-# Or ALSA
-sudo apt install alsa-utils
-
-# Or mpv
-sudo apt install mpv
-```
-
-### Local backend fails to load
-
-```bash
-# Reinstall dependencies
-cd .opencode/plugin/tts-reader
-bun install
-```
+3. Local backend uses Bun subprocesses (see `maxWorkers`)
+4. Audio is played through your system's audio player
+5. Text is cleaned (code blocks replaced with "code block", markdown stripped)
 
 ## License
 

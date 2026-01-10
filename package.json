@@ -1,7 +1,7 @@
 {
-  "name": "opencode-tts-reader",
-  "version": "0.1.0",
-  "description": "OpenCode plugin that reads assistant messages aloud when sessions go idle using Kokoro TTS",
+  "name": "opencode-tts-plugin",
+  "version": "0.0.1",
+  "description": "OpenCode plugin that reads assistant messages aloudusing Kokoro TTS",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
