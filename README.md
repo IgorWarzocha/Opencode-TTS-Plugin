@@ -4,7 +4,7 @@ Simple TTS for OpenCode using [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro
 
 ## Status
 
-**Experimental.** This plugin is still in testing and **not** on npm yet. It will be published later. For now, it is intended for **power users only**.
+**Experimental.** This plugin is still in testing and **not** on npm yet. It will be published later. For now, it is intended for **power users only** - I need feedback.
 
 ## Features
 
@@ -15,6 +15,8 @@ Simple TTS for OpenCode using [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro
 - 11 voice options
 
 TTS only runs for **main sessions**. Child/subagent sessions are ignored. Messages do not overlap; a new message cuts off the previous audio.
+
+![opencode-tts](https://github.com/user-attachments/assets/3483ee28-1d4f-435f-8ce2-e09e65330a88)
 
 ## Quick Start
 
