@@ -1,5 +1,4 @@
 /**
- * src/engine.ts
  * Routes TTS requests to either the local or HTTP backend.
  * Exposes readiness, cancel, and interrupt controls.
  */

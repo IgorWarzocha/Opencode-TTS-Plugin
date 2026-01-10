@@ -1,5 +1,4 @@
 /**
- * src/config.ts
  * Loads and validates the TTS JSONC configuration from the user's home directory.
  * Ensures defaults are written once and reused across sessions.
  */

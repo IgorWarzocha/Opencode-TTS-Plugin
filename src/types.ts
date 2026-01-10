@@ -1,5 +1,4 @@
 /**
- * src/types.ts
  * Defines the TTS configuration and voice list for the plugin.
  * Aligns config defaults with the JSONC file written on first run.
  */

@@ -1,5 +1,4 @@
 /**
- * src/local/pool.ts
  * Manages Bun subprocesses for parallel TTS generation.
  * Streams JSON messages over stdin/stdout to avoid worker thread crashes.
  */

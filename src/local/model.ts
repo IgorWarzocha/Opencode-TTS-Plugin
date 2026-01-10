@@ -1,5 +1,4 @@
 /**
- * src/local/model.ts
  * Loads the Kokoro model for local CPU synthesis.
  * Exposes a typed initializer for reuse across playback flows.
  */

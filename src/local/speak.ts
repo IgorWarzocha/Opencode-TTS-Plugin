@@ -1,5 +1,4 @@
 /**
- * src/local/speak.ts
  * Orchestrates local TTS playback with chunked audio generation.
  * Switches between direct model use and subprocess pooling.
  */

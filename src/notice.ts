@@ -1,5 +1,4 @@
 /**
- * src/notice.ts
  * Reads the TTS mode notice from the command directory.
  * Strips frontmatter so only user-facing instructions remain.
  */

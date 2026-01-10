@@ -1,5 +1,4 @@
 /**
- * src/engine-http.ts
  * Sends synthesis requests to a Kokoro-FastAPI server.
  * Saves the response to a temp file for playback.
  */

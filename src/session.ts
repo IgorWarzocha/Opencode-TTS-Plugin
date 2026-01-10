@@ -1,5 +1,4 @@
 /**
- * src/session.ts
  * Resolves whether a session is a child of another session.
  * Caches results to avoid repeated API requests.
  */

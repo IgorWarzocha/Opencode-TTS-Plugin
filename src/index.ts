@@ -1,5 +1,4 @@
 /**
- * src/index.ts
  * Initializes the TTS plugin and routes events to the local or HTTP backend.
  * Manages command toggles, session scoping, and prompt injection for TTS mode.
  */

@@ -1,5 +1,4 @@
 /**
- * src/text.ts
  * Extracts text content and parses TTS command strings.
  * Normalizes command arguments for consistent toggle behavior.
  */

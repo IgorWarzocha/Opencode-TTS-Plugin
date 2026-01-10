@@ -1,5 +1,4 @@
 /**
- * src/local/worker.ts
  * Runs Kokoro synthesis in a subprocess or worker thread.
  * Reads JSON requests, writes WAV output paths, and exits on errors.
  */

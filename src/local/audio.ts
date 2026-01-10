@@ -1,5 +1,4 @@
 /**
- * src/local/audio.ts
  * Writes WAV audio to temp files and plays it through system players.
  * Tracks the active player process so playback can be interrupted.
  */
