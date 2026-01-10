@@ -1,7 +1,7 @@
 /**
- * TTS generator worker that can run as a worker thread or standalone process.
- * In process mode, it reads JSON lines from stdin and writes results to stdout.
- * Writes WAV files in the worker to avoid large message transfers.
+ * src/local/worker.ts
+ * Runs Kokoro synthesis in a subprocess or worker thread.
+ * Reads JSON requests, writes WAV output paths, and exits on errors.
  */
 
 import { parentPort } from "worker_threads"
@@ -26,18 +26,6 @@ type ResultMessage = {
   path: string
 }
 
-type DebugMessage = {
-  type: "debug"
-  id: number
-  message: string
-}
-
-type ErrorMessage = {
-  type: "error"
-  id: number
-  message: string
-}
-
 type OnnxConfig = {
   executionMode?: "parallel" | "sequential"
   intraOpNumThreads?: number
@@ -49,7 +37,7 @@ type OnnxEnv = {
   backends?: { onnx?: OnnxConfig }
 }
 
-type Outgoing = ReadyMessage | ResultMessage | DebugMessage | ErrorMessage
+type Outgoing = ReadyMessage | ResultMessage
 
 type LogWriter = {
   send: (message: Outgoing) => void
@@ -90,7 +78,7 @@ const model = await kokoro.KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-
   device: "cpu",
 })
 
-writer.send({ type: "ready" } satisfies ReadyMessage)
+writer.send({ type: "ready" })
 
 const handleGenerate = async (message: GenerateMessage) => {
   const audio = await model.generate(message.text, {
@@ -102,11 +90,6 @@ const handleGenerate = async (message: GenerateMessage) => {
   writer.send({ type: "result", id: message.id, path })
 }
 
-const handleError = (message: GenerateMessage, error: unknown) => {
-  const reason = error instanceof Error ? error.message : "TTS worker error"
-  writer.send({ type: "error", id: message.id, message: reason })
-}
-
 if (isProcess) {
   process.stdin.setEncoding("utf8")
   let buffer = ""
@@ -115,15 +98,14 @@ if (isProcess) {
     const parts = buffer.split("\n")
     buffer = parts.pop() ?? ""
     for (const line of parts) {
-      if (!line.trim()) continue
       const message = JSON.parse(line) as GenerateMessage
-      if (!message || message.type !== "generate") continue
-      handleGenerate(message).catch((error) => handleError(message, error))
+      handleGenerate(message)
     }
   })
-} else if (port) {
+}
+
+if (!isProcess && port) {
   port.on("message", (message: GenerateMessage) => {
-    if (!message || message.type !== "generate") return
-    handleGenerate(message).catch((error) => handleError(message, error))
+    handleGenerate(message)
   })
 }

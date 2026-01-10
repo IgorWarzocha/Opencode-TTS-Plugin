@@ -1,7 +1,7 @@
 /**
- * Process pool that schedules TTS generation across CPU cores.
- * Spawns Bun subprocesses that load the model once and stream results.
- * Avoids worker_threads to bypass transformers thread crashes in Bun.
+ * src/local/pool.ts
+ * Manages Bun subprocesses for parallel TTS generation.
+ * Streams JSON messages over stdin/stdout to avoid worker thread crashes.
  */
 
 import { cpus } from "os"
@@ -22,8 +22,7 @@ type Task = {
 type ResultMessage = { type: "result"; id: number; path: string }
 type ErrorMessage = { type: "error"; id: number; message: string }
 type ReadyMessage = { type: "ready" }
-type DebugMessage = { type: "debug"; id: number; message: string }
-type WorkerMessage = ResultMessage | ErrorMessage | ReadyMessage | DebugMessage
+type WorkerMessage = ResultMessage | ErrorMessage | ReadyMessage
 
 type ProcessState = {
   proc: Subprocess<"pipe", "pipe", "pipe">
@@ -104,10 +103,6 @@ export function createWorkerPool(config: TtsConfig): WorkerPool {
       state.ready = true
       handleReady()
       assign()
-      return
-    }
-
-    if (message.type === "debug") {
       return
     }
 

@@ -1,7 +1,7 @@
 /**
- * TTS engine router that dispatches to local or HTTP backends.
- * Keeps local generation separate to allow worker-based parallelism.
- * Exposes readiness checks for the plugin controller.
+ * src/engine.ts
+ * Routes TTS requests to either the local or HTTP backend.
+ * Exposes readiness, cancel, and interrupt controls.
  */
 
 import type { TtsConfig } from "./types"
@@ -15,9 +15,9 @@ export async function initTts(config: TtsConfig): Promise<boolean> {
   return initLocalTts(config)
 }
 
-export async function speak(text: string, config: TtsConfig, $: unknown): Promise<void> {
+export async function speak(text: string, config: TtsConfig): Promise<void> {
   if (config.backend === "http") {
-    await speakHttp(text, config, $)
+    await speakHttp(text, config)
     return
   }
   await speakLocal(text, config)

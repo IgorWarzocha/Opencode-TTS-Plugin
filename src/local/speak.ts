@@ -1,61 +1,30 @@
 /**
- * Local TTS pipeline for streaming playback.
- * Splits text into small chunks and queues them on a worker pool.
- * Plays chunks sequentially while other workers continue generating.
+ * src/local/speak.ts
+ * Orchestrates local TTS playback with chunked audio generation.
+ * Switches between direct model use and subprocess pooling.
  */
 
 import { unlink } from "fs/promises"
 import type { TtsConfig } from "../types"
 import { cancelAudioPlayback, playAudio, writeTempWav } from "./audio"
+import { loadLocalModel, type KokoroModel } from "./model"
 import { createWorkerPool, type WorkerPool } from "./pool"
-
-type OnnxConfig = {
-  executionMode?: "parallel" | "sequential"
-  intraOpNumThreads?: number
-  interOpNumThreads?: number
-}
-
-type OnnxEnv = {
-  onnx?: OnnxConfig
-  backends?: { onnx?: OnnxConfig }
-}
 
 let pool: WorkerPool | null = null
 let poolReady = false
 let poolInit: Promise<boolean> | null = null
-let localModel: any = null
+let localModel: KokoroModel | null = null
 let localInit: Promise<boolean> | null = null
 let cancelToken = 0
-
-const initLocalModel = async (): Promise<any | null> => {
-  try {
-    const transformers = await import("@huggingface/transformers")
-    const env = transformers.env as OnnxEnv
-    const onnx = env.onnx || (env.backends && env.backends.onnx)
-    if (onnx) {
-      onnx.executionMode = "parallel"
-      onnx.intraOpNumThreads = 1
-      onnx.interOpNumThreads = 1
-    }
-
-    const kokoro = await import("kokoro-js")
-    return await kokoro.KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", {
-      dtype: "q8",
-      device: "cpu",
-    })
-  } catch {
-    return null
-  }
-}
 
 export async function initLocalTts(config: TtsConfig): Promise<boolean> {
   if (config.maxWorkers <= 0) {
     if (localModel) return true
     if (localInit) return localInit
 
-    localInit = initLocalModel().then((model) => {
+    localInit = loadLocalModel().then((model: KokoroModel) => {
       localModel = model
-      return model !== null
+      return true
     })
     return localInit
   }
@@ -64,16 +33,10 @@ export async function initLocalTts(config: TtsConfig): Promise<boolean> {
   if (poolInit) return poolInit
 
   pool = createWorkerPool(config)
-  poolInit = pool.ready
-    .then(() => {
-      poolReady = true
-      return true
-    })
-    .catch(() => {
-      poolReady = false
-      pool = null
-      return false
-    })
+  poolInit = pool.ready.then(() => {
+    poolReady = true
+    return true
+  })
 
   return poolInit
 }
@@ -121,12 +84,13 @@ export async function speakLocal(text: string, config: TtsConfig): Promise<void>
   }
 
   if (config.maxWorkers <= 0 && localModel) {
+    const model = localModel
     const playDirect = async () => {
       for (let i = 0; i < chunks.length; i++) {
         if (!config.enabled || token !== cancelToken) {
           break
         }
-        const audio = await localModel.generate(chunks[i], {
+        const audio = await model.generate(chunks[i], {
           voice: config.voice,
           speed: config.speed,
         })
@@ -212,5 +176,5 @@ function splitText(text: string): string[] {
 
 async function cleanupFiles(files: string[]): Promise<void> {
   if (files.length === 0) return
-  await Promise.all(files.map((file) => unlink(file).catch(() => {})))
+  await Promise.all(files.map((file) => unlink(file)))
 }

@@ -1,7 +1,7 @@
 /**
- * Audio helpers for local TTS playback.
- * Writes PCM samples to WAV files for external players.
- * Uses platform-native tools to play audio asynchronously.
+ * src/local/audio.ts
+ * Writes WAV audio to temp files and plays it through system players.
+ * Tracks the active player process so playback can be interrupted.
  */
 
 import { tmpdir } from "os"
@@ -50,19 +50,11 @@ export function cancelAudioPlayback(): void {
 async function runCommand(cmd: string[]): Promise<number> {
   const proc = Bun.spawn(cmd, { stderr: "ignore", stdout: "ignore" }) as Subprocess
   currentProcess = proc
-  return proc.exited
-    .then((code) => {
-      if (currentProcess === proc) {
-        currentProcess = null
-      }
-      return code
-    })
-    .catch(() => {
-      if (currentProcess === proc) {
-        currentProcess = null
-      }
-      return 1
-    })
+  const code = await proc.exited
+  if (currentProcess === proc) {
+    currentProcess = null
+  }
+  return code
 }
 
 async function writeWav(path: string, samples: Float32Array, sampleRate: number): Promise<void> {

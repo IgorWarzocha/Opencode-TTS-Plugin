@@ -1,6 +1,7 @@
 /**
- * Type definitions for the TTS Reader plugin.
- * Supports local Kokoro.js (CPU) or HTTP backend (GPU via Kokoro-FastAPI).
+ * src/types.ts
+ * Defines the TTS configuration and voice list for the plugin.
+ * Aligns config defaults with the JSONC file written on first run.
  */
 
 export type TtsBackend = "local" | "http"
@@ -14,14 +15,14 @@ export interface TtsConfig {
   /** When to speak: "idle" (session idle) or "message" (each message completes) */
   speakOn: TtsSpeakMode
   /** Voice to use for synthesis */
-  voice: string
+  voice: VoiceName
   /** Speech speed multiplier */
   speed: number
   /** Enable/disable TTS */
   enabled: boolean
   /** Response format for HTTP backend */
   httpFormat: "wav" | "mp3" | "pcm"
-  /** Max worker threads for local backend (0 disables workers) */
+  /** Max local worker processes (0 disables pool) */
   maxWorkers: number
 }
 
