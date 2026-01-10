@@ -4,7 +4,7 @@ Simple TTS for OpenCode using [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro
 
 ## Status
 
-**Experimental.** This plugin is still in testing and **not** on npm yet. It will be published later. For now, it is intended for **power users only** - I need feedback.
+**Experimental.** This plugin is still in testing. For now, it is intended for **power users only** - I need feedback. Confirmed working on TUI, unsure about the other flavours.
 
 ## Features
 
