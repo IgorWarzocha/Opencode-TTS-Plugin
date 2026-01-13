@@ -17,8 +17,7 @@ const stripFrontmatter = (raw: string): string => {
 }
 
 export async function loadTtsNotice(pluginRoot: string): Promise<string> {
-  const commandRoot = path.join(pluginRoot, "..", "..", "command")
-  const filePath = path.join(commandRoot, "tts:on.md")
+  const filePath = path.join(pluginRoot, "command", "tts-on.md")
   const text = await Bun.file(filePath).text()
   return stripFrontmatter(text)
 }
