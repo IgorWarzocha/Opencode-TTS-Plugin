@@ -1,5 +1,5 @@
 /**
- * Sends synthesis requests to a Kokoro-FastAPI server.
+ * Sends synthesis requests to a Kokoro-FastAPI or any OpenAI-compatible server.
  * Saves the response to a temp file for playback.
  */
 
@@ -13,12 +13,18 @@ let serverChecked = false
 
 export async function checkHttpServer(config: TtsConfig): Promise<boolean> {
   if (serverChecked) return serverAvailable
+  if (!config.httpUrl) return false
 
-  const response = await fetch(`${config.httpUrl}/v1/models`, {
-    method: "GET",
-    signal: AbortSignal.timeout(3000),
-  })
-  serverAvailable = response.ok
+  try {
+    const response = await fetch(`${config.httpUrl}/v1/models`, {
+      method: "GET",
+      signal: AbortSignal.timeout(3000),
+    })
+    serverAvailable = response.ok
+  } catch {
+    serverAvailable = false
+  }
+  
   serverChecked = true
   return serverAvailable
 }
@@ -26,6 +32,7 @@ export async function checkHttpServer(config: TtsConfig): Promise<boolean> {
 export async function speakHttp(text: string, config: TtsConfig): Promise<void> {
   if (!config.enabled) return
   if (!text || text.trim().length === 0) return
+  if (!config.httpUrl) return
 
   const response = await fetch(`${config.httpUrl}/v1/audio/speech`, {
     method: "POST",
@@ -35,11 +42,14 @@ export async function speakHttp(text: string, config: TtsConfig): Promise<void> 
       voice: config.voice,
       input: text,
       speed: config.speed,
-      response_format: config.httpFormat,
+      response_format: config.httpFormat || "wav",
+      ...(config.providerOptions || {}),
     }),
   })
 
-  if (!response.ok) return
+  if (!response.ok) {
+    throw new Error(`HTTP backend error: ${response.status} ${response.statusText}`)
+  }
 
   const audioBuffer = await response.arrayBuffer()
   const ext = config.httpFormat === "mp3" ? "mp3" : "wav"

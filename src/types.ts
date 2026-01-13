@@ -6,33 +6,58 @@
 export type TtsBackend = "local" | "http"
 export type TtsSpeakMode = "idle" | "message"
 
-export interface TtsConfig {
-  /** TTS backend: "local" for CPU (kokoro-js), "http" for GPU (Kokoro-FastAPI) */
+/** Options passed directly to the TTS provider (OpenAI-compatible) */
+export interface ProviderOptions {
+  [key: string]: unknown
+}
+
+/** Individual TTS profile configuration fields */
+export interface TtsProfile {
+  /** TTS backend: "local" for CPU (kokoro-js), "http" for generic OpenAI-compatible (GPU) */
   backend: TtsBackend
   /** HTTP server URL when backend is "http" (e.g., "http://localhost:8880") */
-  httpUrl: string
+  httpUrl?: string
+  /** Voice to use for synthesis */
+  voice?: string
+  /** Speech speed multiplier */
+  speed?: number
+  /** Response format for HTTP backend */
+  httpFormat?: "wav" | "mp3" | "pcm"
+  /** Language code for text processing */
+  language?: string
+  /** Provider-specific options passed to the backend */
+  providerOptions?: ProviderOptions
+}
+
+/** Complete configuration including runtime state and all profiles */
+export type TtsConfig = TtsProfile & {
+  /** Active profile name */
+  activeProfile: string
+  /** Profiles configuration */
+  profiles: Record<string, TtsProfile>
   /** When to speak: "idle" (session idle) or "message" (each message completes) */
   speakOn: TtsSpeakMode
-  /** Voice to use for synthesis */
-  voice: VoiceName
-  /** Speech speed multiplier */
-  speed: number
   /** Enable/disable TTS */
   enabled: boolean
-  /** Response format for HTTP backend */
-  httpFormat: "wav" | "mp3" | "pcm"
+  /** Fallback to local backend if HTTP fails */
+  fallbackToLocal: boolean
   /** Max local worker processes (0 disables pool) */
   maxWorkers: number
 }
 
 export const DEFAULT_CONFIG: TtsConfig = {
-  backend: "local",
-  httpUrl: "http://localhost:8880",
-  httpFormat: "wav",
+  activeProfile: "default",
+  profiles: {
+    default: {
+      backend: "local",
+      voice: "af_heart",
+      speed: 1.0,
+    },
+  },
+  backend: "local", // Required by intersection but will be overwritten by active profile
   speakOn: "message",
-  voice: "af_heart",
-  speed: 1.0,
   enabled: false,
+  fallbackToLocal: true,
   maxWorkers: 2,
 }
 

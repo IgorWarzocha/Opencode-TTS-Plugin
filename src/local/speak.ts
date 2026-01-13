@@ -90,8 +90,8 @@ export async function speakLocal(text: string, config: TtsConfig): Promise<void>
           break
         }
         const audio = await model.generate(chunks[i], {
-          voice: config.voice,
-          speed: config.speed,
+          voice: (config.voice || "af_heart") as any,
+          speed: config.speed || 1.0,
         })
         const samples = audio.audio as Float32Array
         const filePath = await writeTempWav(samples, 24000, i)

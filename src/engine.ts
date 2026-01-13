@@ -16,25 +16,31 @@ export async function initTts(config: TtsConfig): Promise<boolean> {
 
 export async function speak(text: string, config: TtsConfig): Promise<void> {
   if (config.backend === "http") {
-    await speakHttp(text, config)
-    return
+    try {
+      await speakHttp(text, config)
+      return
+    } catch (error) {
+      if (config.fallbackToLocal && isLocalReady()) {
+        await speakLocal(text, config)
+        return
+      }
+      throw error
+    }
   }
   await speakLocal(text, config)
 }
 
 export function isReady(config: TtsConfig): boolean {
   if (config.backend === "http") {
-    return isHttpReady()
+    return isHttpReady() || (config.fallbackToLocal && isLocalReady())
   }
   return isLocalReady()
 }
 
 export function cancelTts(config: TtsConfig): void {
-  if (config.backend === "http") return
   cancelLocalSpeak()
 }
 
 export function interruptTts(config: TtsConfig): void {
-  if (config.backend === "http") return
   interruptLocalSpeak()
 }

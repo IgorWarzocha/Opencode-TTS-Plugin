@@ -35,6 +35,7 @@
     "clean": "rm -rf dist",
     "build": "npm run clean && tsc",
     "lint": "tsc --noEmit",
+    "test": "bun test",
     "prepublishOnly": "npm run build"
   },
   "publishConfig": {

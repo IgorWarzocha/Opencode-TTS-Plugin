@@ -6,7 +6,7 @@
 import { mkdir } from "fs/promises"
 import { homedir } from "os"
 import * as path from "path"
-import { DEFAULT_CONFIG, type TtsConfig } from "./types"
+import { DEFAULT_CONFIG, type TtsConfig, type TtsProfile } from "./types"
 
 export const configPath = path.join(homedir(), ".config", "opencode", "tts.jsonc")
 
@@ -17,22 +17,31 @@ const stripJsonc = (raw: string): string => {
 
 const template = `// OpenCode TTS Reader configuration (JSONC)
 {
+  // Active profile from the "profiles" object below
+  "activeProfile": "${DEFAULT_CONFIG.activeProfile}",
   // Enable/disable TTS at startup
   "enabled": ${DEFAULT_CONFIG.enabled},
-  // "local" (CPU) or "http" (Kokoro-FastAPI)
-  "backend": "${DEFAULT_CONFIG.backend}",
-  // Kokoro-FastAPI URL when backend is http
-  "httpUrl": "${DEFAULT_CONFIG.httpUrl}",
-  // Response format: "wav", "mp3", or "pcm"
-  "httpFormat": "${DEFAULT_CONFIG.httpFormat}",
   // "message" (each response) or "idle" (session idle)
   "speakOn": "${DEFAULT_CONFIG.speakOn}",
-  // Voice ID
-  "voice": "${DEFAULT_CONFIG.voice}",
-  // Playback speed (0.5 - 2.0)
-  "speed": ${DEFAULT_CONFIG.speed},
+  // Fallback to local (CPU) backend if HTTP fails
+  "fallbackToLocal": ${DEFAULT_CONFIG.fallbackToLocal},
   // Max local worker processes (0 disables pool)
-  "maxWorkers": ${DEFAULT_CONFIG.maxWorkers}
+  "maxWorkers": ${DEFAULT_CONFIG.maxWorkers},
+
+  "profiles": {
+    "default": {
+      "backend": "local",
+      "voice": "af_heart",
+      "speed": 1.0
+    },
+    "polish": {
+      "backend": "http",
+      "httpUrl": "http://localhost:8880",
+      "voice": "pl_0",
+      "speed": 1.0,
+      "httpFormat": "wav"
+    }
+  }
 }
 `
 
@@ -48,5 +57,18 @@ export async function loadConfig(): Promise<TtsConfig> {
   const raw = await file.text()
   const cleaned = stripJsonc(raw)
   const parsed = JSON.parse(cleaned) as Partial<TtsConfig>
-  return { ...DEFAULT_CONFIG, ...parsed }
+
+  const profiles = parsed.profiles || DEFAULT_CONFIG.profiles
+  const activeProfileName = parsed.activeProfile || DEFAULT_CONFIG.activeProfile
+  const profile = profiles[activeProfileName] || DEFAULT_CONFIG.profiles.default
+
+  // Merge: Defaults -> Profile settings -> Top-level overrides
+  const config: TtsConfig = {
+    ...DEFAULT_CONFIG,
+    ...profile,
+    ...parsed,
+    profiles, // Ensure profiles are preserved
+  }
+
+  return config
 }

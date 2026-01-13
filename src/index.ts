@@ -8,6 +8,7 @@ import * as path from "path"
 import * as url from "url"
 import { loadConfig } from "./config"
 import { cancelTts, interruptTts, initTts, isReady, speak } from "./engine"
+import { resetHttpCheck } from "./engine-http"
 import { loadTtsNotice } from "./notice"
 import { createSessionGuard } from "./session"
 import { normalizeCommandArgs, parseTtsCommand } from "./text"
@@ -62,6 +63,46 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
   }, 5000)
 
   const applyTtsCommand = async (args: string): Promise<void> => {
+    if (args.startsWith("profile ")) {
+      const profileName = args.slice(8).trim()
+      const loaded = await loadConfig()
+      const profiles = loaded.profiles || config.profiles
+      
+      if (!profiles[profileName]) {
+        await client.tui.showToast({
+          body: {
+            title: "TTS Reader",
+            message: `Profile '${profileName}' not found in tts.jsonc`,
+            variant: "warning",
+            duration: 3000,
+          },
+        })
+        return
+      }
+
+      config.activeProfile = profileName
+      resetHttpCheck()
+      
+      const newConfig = await loadConfig()
+      // Update our live config object while keeping enabled state
+      const wasEnabled = config.enabled
+      Object.assign(config, newConfig)
+      config.activeProfile = profileName // Ensure it's set if file hasn't updated yet
+      config.enabled = wasEnabled
+
+      await initTts(config)
+      
+      await client.tui.showToast({
+        body: {
+          title: "TTS Reader",
+          message: `Switched to profile: ${profileName}`,
+          variant: "success",
+          duration: 2000,
+        },
+      })
+      return
+    }
+
     const wantsOn = args.includes("on") || args.includes("enable")
     const wantsOff = args.includes("off") || args.includes("disable")
 
@@ -91,6 +132,7 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
     if (config.enabled) {
       if (backendChanged || maxWorkersChanged || httpUrlChanged) {
         cancelTts(config)
+        resetHttpCheck()
       }
       await initTts(config)
     }
@@ -130,7 +172,11 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
       .trim()
 
     if (cleanText.length === 0) return
-    await speak(cleanText, config)
+    try {
+      await speak(cleanText, config)
+    } catch (e) {
+      // Error handled by engine.ts fallback or thrown if both fail
+    }
   }
 
   return {

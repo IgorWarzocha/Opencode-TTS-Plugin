@@ -178,8 +178,8 @@ export function createWorkerPool(config: TtsConfig): WorkerPool {
       const task: Task = {
         id: nextId,
         text,
-        voice: config.voice as VoiceName,
-        speed: config.speed,
+        voice: (config.voice || "af_heart") as VoiceName,
+        speed: config.speed || 1.0,
         resolve,
         reject,
       }
