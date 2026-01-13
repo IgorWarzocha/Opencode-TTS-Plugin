@@ -231,3 +231,11 @@ return {
 - **Output:** `dist/` folder
 - **Files published:** `dist/`, `README.md`, `LICENSE`
 - **Access:** Public npm registry
+
+## Agent Behavior
+
+When running in a GitHub Action (CI/CD):
+1. A dedicated branch is already checked out for you.
+2. **Do NOT** create new branches (do not use `git checkout -b`).
+3. Commit changes directly to the current branch.
+4. The system will handle pushing and PR creation.
