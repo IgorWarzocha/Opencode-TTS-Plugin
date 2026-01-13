@@ -24,7 +24,7 @@ export async function playAudio(filePath: string): Promise<void> {
   }
 
   if (platform === "win32") {
-    await runCommand(["powershell", "-c", `(New-Object Media.SoundPlayer '${filePath}').PlaySync()`])
+    await runCommand(["ffplay", "-autoexit", "-nodisp", "-loglevel", "quiet", filePath])
     return
   }
 
