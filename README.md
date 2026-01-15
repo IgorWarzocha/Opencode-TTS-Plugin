@@ -10,7 +10,7 @@ Simple TTS for OpenCode using [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro
 
 - Speaks assistant responses in message or idle mode
 - Local CPU or HTTP GPU backend
-- Toggle via `/tts:on` and `/tts:off`
+- Toggle via `/tts-on` and `/tts-off`
 - Cross-platform playback
 - 11 voice options
 
@@ -22,7 +22,7 @@ TTS only runs for **main sessions**. Child/subagent sessions are ignored. Messag
 
 ### Local CPU Mode (Default - zero config)
 
-TTS starts **disabled** by default. Enable it with `/tts:on` once the plugin is loaded.
+TTS starts **disabled** by default. Enable it with `/tts-on` once the plugin is loaded.
 
 Add the path manually to your `opencode.json`, pointing at wherever you copied the plugin:
 

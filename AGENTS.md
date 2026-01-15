@@ -155,7 +155,7 @@ return {
 - `message.part.updated` → Track latest assistant text
 - `message.updated` → Speak on completion (when `speakOn: "message"`)
 - `session.idle` → Speak final message (when `speakOn: "idle"`)
-- `tui.command.execute` → Handle `/tts:on` and `/tts:off`
+- `tui.command.execute` → Handle `/tts-on` and `/tts-off`
 
 ### Configuration
 
@@ -194,7 +194,7 @@ return {
 
 ### New Command
 
-1. Create `command/tts:{name}.md` (reference existing files)
+1. Create `command/tts-{name}.md` (reference existing files)
 2. Add parsing in `src/text.ts` if needed
 3. Handle in `applyTtsCommand` in `src/index.ts`
 
