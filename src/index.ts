@@ -13,7 +13,7 @@ import { resetKokoroCheck } from "./engine-kokoro"
 import { resetOpenedAICheck } from "./engine-openedai"
 import { loadTtsNotice } from "./notice"
 import { createSessionGuard } from "./session"
-import { normalizeCommandArgs, parseTtsCommand } from "./text"
+import { parseTtsCommand } from "./text"
 import type { TtsConfig } from "./types"
 
 export const TtsReaderPlugin: Plugin = async ({ client }) => {
@@ -68,9 +68,9 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
     if (args.startsWith("profile ")) {
       const profileName = args.slice(8).trim()
       const loaded = await loadConfig()
-      const profiles = loaded.profiles || config.profiles
+      const profiles = loaded.profiles
       
-      if (!profiles[profileName]) {
+      if (!profiles || !profiles[profileName]) {
         await client.tui.showToast({
           body: {
             title: "TTS Reader",
@@ -83,6 +83,18 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
       }
 
       const profileToApply = profiles[profileName]
+      if (!profileToApply.backend) {
+        await client.tui.showToast({
+          body: {
+            title: "TTS Reader",
+            message: `Profile '${profileName}' is missing required 'backend' field`,
+            variant: "warning",
+            duration: 3000,
+          },
+        })
+        return
+      }
+
       resetHttpCheck()
       resetKokoroCheck()
       resetOpenedAICheck()
@@ -234,7 +246,7 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
         }
         if (command.startsWith("tts")) {
           promptState.skipCommandExecuted = true
-          await applyTtsCommand(normalizeCommandArgs(command.slice(3)))
+          await applyTtsCommand(command.slice(3).trim().toLowerCase())
           return
         }
       }

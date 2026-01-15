@@ -38,7 +38,7 @@ export interface TtsProfile {
 }
 
 /** Complete configuration including runtime state and all profiles */
-export type TtsConfig = TtsProfile & {
+export interface TtsConfig {
   /** Active profile name */
   activeProfile: string
   /** Profiles configuration */
@@ -51,6 +51,29 @@ export type TtsConfig = TtsProfile & {
   fallbackToLocal: boolean
   /** Max local worker processes (0 disables pool) */
   maxWorkers: number
+
+  /** Active backend (from profile) */
+  backend: TtsBackend
+  /** Active HTTP URL (from profile) */
+  httpUrl?: string
+  /** Active HTTP endpoint (from profile) */
+  httpEndpoint?: string
+  /** Active HTTP headers (from profile) */
+  httpHeaders?: Record<string, string>
+  /** Active model (from profile) */
+  model?: string
+  /** Active voice (from profile) */
+  voice?: string
+  /** Active speed (from profile) */
+  speed?: number
+  /** Active format (from profile) */
+  httpFormat?: "wav" | "mp3" | "pcm"
+  /** Active language (from profile) */
+  language?: string
+  /** Active provider options (from profile) */
+  providerOptions?: ProviderOptions
+  /** Active OpenedAI model (from profile) */
+  openedaiModel?: "tts-1" | "tts-1-hd"
 }
 
 export const DEFAULT_CONFIG: TtsConfig = {
@@ -62,7 +85,9 @@ export const DEFAULT_CONFIG: TtsConfig = {
       speed: 1.0,
     },
   },
-  backend: "local", // Required by intersection but will be overwritten by active profile
+  backend: "local",
+  voice: "af_heart",
+  speed: 1.0,
   speakOn: "message",
   enabled: false,
   fallbackToLocal: true,
