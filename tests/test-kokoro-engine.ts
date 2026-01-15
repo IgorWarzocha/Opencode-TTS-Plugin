@@ -36,13 +36,13 @@ async function test() {
   }
 
   try {
-    const text = "Testing the Kokoro Fast-API backend. This backend is optimized for the Kokoro TTS model."
+    const text = "Testing the Kokoro Fast-API backend."
     
-    console.log(`\nSynthesizing and playing: "${text}"`)
+    console.log(`\nSynthesizing: "${text}"`)
     await speakKokoro(text, config, mockClient)
-    console.log("\nKokoro playback success!")
+    console.log("\nSuccess!")
   } catch (e: unknown) {
-    console.error("\nKokoro playback failed:", (e as Error).message)
+    console.error("\nFailed:", (e as Error).message)
   }
 
   console.log("\n--- Test Complete ---")

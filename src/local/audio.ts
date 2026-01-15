@@ -9,7 +9,6 @@ import { join } from "path"
 import type { Subprocess } from "bun"
 
 let currentProcess: Subprocess | null = null
-let lastWorkingPlayer: string | null = null
 
 export type ToastClient = {
   tui: {
@@ -20,7 +19,7 @@ export type ToastClient = {
         variant: "info" | "success" | "warning" | "error"
         duration?: number
       }
-    }) => Promise<void>
+    }) => Promise<unknown>
   }
 }
 

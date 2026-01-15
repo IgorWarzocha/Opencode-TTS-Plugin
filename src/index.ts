@@ -19,7 +19,6 @@ import type { TtsConfig } from "./types"
 export const TtsReaderPlugin: Plugin = async ({ client }) => {
   const pluginRoot = path.join(path.dirname(url.fileURLToPath(import.meta.url)), "..")
   const config: TtsConfig = await loadConfig()
-  const ttsNotice = await loadTtsNotice(pluginRoot)
   const isChildSession = createSessionGuard(client)
 
   const promptState = {
@@ -31,6 +30,7 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
   let latestMessageID: string | null = null
   let latestMessageText: string | null = null
   let lastSpokenMessageID: string | null = null
+  let ttsNotice = await loadTtsNotice(pluginRoot)
 
   setTimeout(async () => {
     const success = await initTts(config)
@@ -113,11 +113,11 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
       resetKokoroCheck()
       resetOpenedAICheck()
       
-      // Update our live config object
       const wasEnabled = config.enabled
       Object.assign(config, loaded, profileToApply)
       config.activeProfile = profileName
       config.enabled = wasEnabled
+      ttsNotice = await loadTtsNotice(pluginRoot)
 
       await initTts(config)
       
@@ -149,6 +149,7 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
     const loaded = await loadConfig()
     Object.assign(config, loaded)
     config.enabled = nextEnabled
+    ttsNotice = await loadTtsNotice(pluginRoot)
 
     const backendChanged = config.backend !== previous.backend
     const maxWorkersChanged = config.maxWorkers !== previous.maxWorkers

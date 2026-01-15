@@ -4,6 +4,7 @@
  */
 
 import * as path from "path"
+import { homedir } from "os"
 
 const stripFrontmatter = (raw: string): string => {
   if (!raw) return ""
@@ -16,8 +17,28 @@ const stripFrontmatter = (raw: string): string => {
   return raw.trim()
 }
 
+/**
+ * Loads the TTS mode notice. Searches local repo, then global config,
+ * then falls back to the plugin's bundled notice.
+ */
 export async function loadTtsNotice(pluginRoot: string): Promise<string> {
-  const filePath = path.join(pluginRoot, "command", "tts-on.md")
-  const text = await Bun.file(filePath).text()
-  return stripFrontmatter(text)
+  const paths = [
+    path.join(process.cwd(), ".opencode", "command", "tts-on.md"),
+    path.join(homedir(), ".config", "opencode", "command", "tts-on.md"),
+    path.join(pluginRoot, "command", "tts-on.md"),
+  ]
+
+  for (const filePath of paths) {
+    try {
+      const file = Bun.file(filePath)
+      if (await file.exists()) {
+        const text = await file.text()
+        return stripFrontmatter(text)
+      }
+    } catch {
+      // Continue to next path
+    }
+  }
+
+  return ""
 }

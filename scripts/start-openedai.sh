@@ -1,7 +1,7 @@
 #!/bin/bash
 # start-openedai.sh - Starts only OpenedAI-Speech (GPU)
 
-echo "🔊 Starting OpenedAI-Speech..."
+echo "Starting OpenedAI-Speech..."
 
 # Stop existing container
 docker stop openedai-speech-test 2>/dev/null
@@ -16,5 +16,5 @@ docker run -d \
   -p 8000:8000 \
   ghcr.io/matatonic/openedai-speech:latest
 
-echo "✨ OpenedAI-Speech is booting up at http://localhost:8000"
+echo "OpenedAI-Speech is booting up at http://localhost:8000"
 echo "logs: docker logs -f openedai-speech-test"

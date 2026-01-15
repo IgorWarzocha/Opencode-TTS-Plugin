@@ -1,7 +1,7 @@
 #!/bin/bash
 # start-kokoro.sh - Starts only Kokoro-FastAPI (GPU)
 
-echo "🔊 Starting Kokoro-FastAPI..."
+echo "Starting Kokoro-FastAPI..."
 
 # Stop existing container
 docker stop kokoro-tts-test 2>/dev/null
@@ -16,5 +16,5 @@ docker run -d \
   -p 8880:8880 \
   ghcr.io/remsky/kokoro-fastapi-gpu:latest
 
-echo "✨ Kokoro is booting up at http://localhost:8880"
+echo "Kokoro is booting up at http://localhost:8880"
 echo "logs: docker logs -f kokoro-tts-test"

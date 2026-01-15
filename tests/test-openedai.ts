@@ -36,19 +36,13 @@ async function test() {
   }
 
   try {
-    const text = "This is a long sentence that should be split into multiple chunks to test parallel synthesis. " +
-                 "I want to ensure that there are no gaps between the audio segments and that everything plays correctly. " +
-                 "OpenedAI Speech is a powerful backend that supports multiple languages and models."
+    const text = "This is a test sentence for parallel synthesis. It should be split and played without gaps."
     
-    console.log(`\nSynthesizing and playing: "${text}"`)
+    console.log(`\nSynthesizing: "${text}"`)
     await speakOpenedAI(text, config, mockClient)
-    console.log("\nOpenedAI playback success!")
+    console.log("\nSuccess!")
   } catch (e: unknown) {
-    const error = e as Error
-    console.error("\nOpenedAI playback failed:", error.message)
-    if (error.message.includes("ECONNREFUSED")) {
-      console.log("HINT: Is OpenedAI running? Try: bash scripts/start-openedai.sh")
-    }
+    console.error("\nFailed:", (e as Error).message)
   }
 
   console.log("\n--- Test Complete ---")
