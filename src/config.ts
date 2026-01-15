@@ -34,12 +34,32 @@ const template = `// OpenCode TTS Reader configuration (JSONC)
       "voice": "af_heart",
       "speed": 1.0
     },
-    "polish": {
-      "backend": "http",
-      "httpUrl": "http://localhost:8880",
-      "voice": "pl_0",
+    "openedai": {
+      "backend": "openedai",
+      "httpUrl": "http://localhost:8000",
+      "voice": "alloy",
+      "openedaiModel": "tts-1",
       "speed": 1.0,
       "httpFormat": "wav"
+    },
+    "kokoro-gpu": {
+      "backend": "kokoro",
+      "httpUrl": "http://localhost:8880",
+      "voice": "af_heart",
+      "speed": 1.0,
+      "httpFormat": "wav"
+    },
+    // Example: OpenAI API (or any OpenAI-compatible provider)
+    "openai": {
+      "backend": "http",
+      "httpUrl": "https://api.openai.com",
+      "httpHeaders": {
+        "Authorization": "Bearer sk-your-api-key-here"
+      },
+      "model": "tts-1",
+      "voice": "alloy",
+      "speed": 1.0,
+      "httpFormat": "mp3"
     }
   }
 }
@@ -71,4 +91,13 @@ export async function loadConfig(): Promise<TtsConfig> {
   }
 
   return config
+}
+
+export function mergeConfig(base: TtsConfig, profile: TtsProfile, name: string): TtsConfig {
+  return {
+    ...base,
+    ...profile,
+    activeProfile: name,
+    profiles: base.profiles // Preserve existing profiles map
+  }
 }

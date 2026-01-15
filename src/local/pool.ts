@@ -8,6 +8,7 @@ import { fileURLToPath } from "url"
 import { dirname, join } from "path"
 import type { FileSink, Subprocess } from "bun"
 import type { TtsConfig, VoiceName } from "../types"
+import { isValidVoice } from "./validate"
 
 type WorkerResult = { path: string }
 type Task = {
@@ -178,7 +179,7 @@ export function createWorkerPool(config: TtsConfig): WorkerPool {
       const task: Task = {
         id: nextId,
         text,
-        voice: (config.voice || "af_heart") as VoiceName,
+        voice: isValidVoice(config.voice) ? config.voice : "af_heart",
         speed: config.speed || 1.0,
         resolve,
         reject,

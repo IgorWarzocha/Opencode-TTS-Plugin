@@ -3,7 +3,7 @@
  * Aligns config defaults with the JSONC file written on first run.
  */
 
-export type TtsBackend = "local" | "http"
+export type TtsBackend = "local" | "http" | "openedai" | "kokoro"
 export type TtsSpeakMode = "idle" | "message"
 
 /** Options passed directly to the TTS provider (OpenAI-compatible) */
@@ -13,10 +13,16 @@ export interface ProviderOptions {
 
 /** Individual TTS profile configuration fields */
 export interface TtsProfile {
-  /** TTS backend: "local" for CPU (kokoro-js), "http" for generic OpenAI-compatible (GPU) */
+  /** TTS backend: "local" (kokoro-js CPU), "http" (generic OpenAI-compatible), "openedai" (OpenedAI-Speech), "kokoro" (Kokoro-FastAPI) */
   backend: TtsBackend
-  /** HTTP server URL when backend is "http" (e.g., "http://localhost:8880") */
+  /** HTTP server URL when backend is "http", "openedai", or "kokoro" (e.g., "http://localhost:8000") */
   httpUrl?: string
+  /** Custom endpoint path (default: /v1/audio/speech) */
+  httpEndpoint?: string
+  /** Custom HTTP headers for auth (e.g., {"Authorization": "Bearer sk-xxx"}) */
+  httpHeaders?: Record<string, string>
+  /** Model name to use (default varies by backend) */
+  model?: string
   /** Voice to use for synthesis */
   voice?: string
   /** Speech speed multiplier */
@@ -25,8 +31,10 @@ export interface TtsProfile {
   httpFormat?: "wav" | "mp3" | "pcm"
   /** Language code for text processing */
   language?: string
-  /** Provider-specific options passed to the backend */
+  /** Provider-specific options passed to the request body */
   providerOptions?: ProviderOptions
+  /** OpenedAI model: "tts-1" or "tts-1-hd" (openedai only, deprecated - use model instead) */
+  openedaiModel?: "tts-1" | "tts-1-hd"
 }
 
 /** Complete configuration including runtime state and all profiles */

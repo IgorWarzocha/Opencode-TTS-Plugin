@@ -1,7 +1,8 @@
 /**
- * Generic OpenAI-compatible HTTP backend client.
+ * Kokoro-FastAPI HTTP backend client.
+ * Implements the OpenAI-compatible /v1/audio/speech endpoint for Kokoro TTS.
  * Supports chunked text with parallel synthesis for gapless playback.
- * Handles providerOptions for advanced features like voice cloning.
+ * See: https://github.com/remsky/Kokoro-FastAPI
  */
 
 import { unlink } from "fs/promises"
@@ -15,29 +16,35 @@ let serverAvailable = false
 let serverChecked = false
 let cancelToken = 0
 
-export async function checkHttpServer(config: TtsConfig): Promise<boolean> {
+/** Kokoro voices (same as local kokoro-js) */
+export const KOKORO_VOICES = [
+  "af_heart",
+  "af_bella",
+  "af_nicole",
+  "af_sarah",
+  "af_sky",
+  "am_adam",
+  "am_michael",
+  "bf_emma",
+  "bf_isabella",
+  "bm_george",
+  "bm_lewis",
+] as const
+
+export type KokoroVoice = (typeof KOKORO_VOICES)[number]
+
+export async function checkKokoroServer(config: TtsConfig): Promise<boolean> {
   if (serverChecked) return serverAvailable
   if (!config.httpUrl) return false
 
   try {
-    const modelsUrl = `${config.httpUrl}/v1/models`
-    const response = await fetch(modelsUrl, {
+    const response = await fetch(`${config.httpUrl}/v1/models`, {
       method: "GET",
-      headers: config.httpHeaders || {},
       signal: AbortSignal.timeout(3000),
     })
     serverAvailable = response.ok
   } catch {
-    try {
-      const response = await fetch(config.httpUrl, {
-        method: "HEAD",
-        headers: config.httpHeaders || {},
-        signal: AbortSignal.timeout(3000),
-      })
-      serverAvailable = response.ok
-    } catch {
-      serverAvailable = false
-    }
+    serverAvailable = false
   }
 
   serverChecked = true
@@ -47,30 +54,22 @@ export async function checkHttpServer(config: TtsConfig): Promise<boolean> {
 async function synthesizeChunk(
   text: string,
   index: number,
-  config: TtsConfig,
-  providerOptions: Record<string, unknown>
+  config: TtsConfig
 ): Promise<string> {
-  const endpoint = config.httpEndpoint || "/v1/audio/speech"
-  const url = `${config.httpUrl}${endpoint}`
-
-  const response = await fetch(url, {
+  const response = await fetch(`${config.httpUrl}/v1/audio/speech`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(config.httpHeaders || {}),
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: config.model || "tts-1",
-      voice: config.voice || "alloy",
       input: text,
+      model: "kokoro",
+      voice: config.voice || "af_heart",
       speed: config.speed || 1.0,
       response_format: config.httpFormat || "wav",
-      ...providerOptions,
     }),
   })
 
   if (!response.ok) {
-    throw new Error(`HTTP backend error: ${response.status} ${response.statusText}`)
+    throw new Error(`Kokoro HTTP error: ${response.status} ${response.statusText}`)
   }
 
   const audioBuffer = await response.arrayBuffer()
@@ -81,7 +80,7 @@ async function synthesizeChunk(
   return audioPath
 }
 
-export async function speakHttp(text: string, config: TtsConfig): Promise<void> {
+export async function speakKokoro(text: string, config: TtsConfig): Promise<void> {
   if (!config.enabled) return
   const trimmed = text.trim()
   if (!trimmed) return
@@ -91,25 +90,7 @@ export async function speakHttp(text: string, config: TtsConfig): Promise<void> 
   const chunks = splitTextIntoChunks(trimmed)
   if (chunks.length === 0) return
 
-  const providerOptions: Record<string, unknown> = { ...(config.providerOptions || {}) }
-
-  if (
-    typeof providerOptions.speaker_wav === "string" &&
-    (await Bun.file(providerOptions.speaker_wav as string).exists())
-  ) {
-    try {
-      const file = Bun.file(providerOptions.speaker_wav as string)
-      const arrayBuffer = await file.arrayBuffer()
-      const base64 = Buffer.from(arrayBuffer).toString("base64")
-      providerOptions.speaker_wav = base64
-    } catch {
-      // Keep original value on failure
-    }
-  }
-
-  const synthesisPromises = chunks.map((chunk, i) =>
-    synthesizeChunk(chunk, i, config, providerOptions)
-  )
+  const synthesisPromises = chunks.map((chunk, i) => synthesizeChunk(chunk, i, config))
 
   const files: string[] = []
 
@@ -130,16 +111,16 @@ export async function speakHttp(text: string, config: TtsConfig): Promise<void> 
   })
 }
 
-export function cancelHttpSpeak(): void {
+export function cancelKokoroSpeak(): void {
   cancelToken += 1
   cancelAudioPlayback()
 }
 
-export function isHttpReady(): boolean {
+export function isKokoroReady(): boolean {
   return serverAvailable
 }
 
-export function resetHttpCheck(): void {
+export function resetKokoroCheck(): void {
   serverChecked = false
   serverAvailable = false
 }

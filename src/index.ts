@@ -9,6 +9,8 @@ import * as url from "url"
 import { loadConfig } from "./config"
 import { cancelTts, interruptTts, initTts, isReady, speak } from "./engine"
 import { resetHttpCheck } from "./engine-http"
+import { resetKokoroCheck } from "./engine-kokoro"
+import { resetOpenedAICheck } from "./engine-openedai"
 import { loadTtsNotice } from "./notice"
 import { createSessionGuard } from "./session"
 import { normalizeCommandArgs, parseTtsCommand } from "./text"
@@ -80,14 +82,15 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
         return
       }
 
-      config.activeProfile = profileName
+      const profileToApply = profiles[profileName]
       resetHttpCheck()
+      resetKokoroCheck()
+      resetOpenedAICheck()
       
-      const newConfig = await loadConfig()
-      // Update our live config object while keeping enabled state
+      // Update our live config object
       const wasEnabled = config.enabled
-      Object.assign(config, newConfig)
-      config.activeProfile = profileName // Ensure it's set if file hasn't updated yet
+      Object.assign(config, loaded, profileToApply)
+      config.activeProfile = profileName
       config.enabled = wasEnabled
 
       await initTts(config)
@@ -133,6 +136,7 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
       if (backendChanged || maxWorkersChanged || httpUrlChanged) {
         cancelTts(config)
         resetHttpCheck()
+        resetOpenedAICheck()
       }
       await initTts(config)
     }
@@ -175,7 +179,14 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
     try {
       await speak(cleanText, config)
     } catch (e) {
-      // Error handled by engine.ts fallback or thrown if both fail
+      await client.tui.showToast({
+        body: {
+          title: "TTS Reader",
+          message: "Failed to synthesize speech (all backends failed)",
+          variant: "error",
+          duration: 3000,
+        },
+      })
     }
   }
 
