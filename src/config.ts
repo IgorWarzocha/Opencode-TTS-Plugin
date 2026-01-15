@@ -36,6 +36,7 @@ const template = `// OpenCode TTS Reader configuration (JSONC)
     },
     "openedai": {
       "backend": "openedai",
+      // Required: HTTP server URL (e.g., http://localhost:8000)
       "httpUrl": "http://localhost:8000",
       "voice": "alloy",
       "openedaiModel": "tts-1",
@@ -44,6 +45,7 @@ const template = `// OpenCode TTS Reader configuration (JSONC)
     },
     "kokoro-gpu": {
       "backend": "kokoro",
+      // Required: Kokoro-FastAPI server URL
       "httpUrl": "http://localhost:8880",
       "voice": "af_heart",
       "speed": 1.0,
@@ -52,6 +54,7 @@ const template = `// OpenCode TTS Reader configuration (JSONC)
     // Example: OpenAI API (or any OpenAI-compatible provider)
     "openai": {
       "backend": "http",
+      // Required: OpenAI API base URL
       "httpUrl": "https://api.openai.com",
       "httpHeaders": {
         "Authorization": "Bearer sk-your-api-key-here"
@@ -59,7 +62,12 @@ const template = `// OpenCode TTS Reader configuration (JSONC)
       "model": "tts-1",
       "voice": "alloy",
       "speed": 1.0,
-      "httpFormat": "mp3"
+      "httpFormat": "mp3",
+      // Optional: provider-specific options passed to the request body
+      // NOTE: These are passed directly without validation.
+      "providerOptions": {
+        // "response_format": "mp3"
+      }
     }
   }
 }

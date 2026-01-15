@@ -95,6 +95,20 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
         return
       }
 
+      // Validate required httpUrl for HTTP-based backends
+      const needsUrl = ["http", "openedai", "kokoro"].includes(profileToApply.backend)
+      if (needsUrl && !profileToApply.httpUrl) {
+        await client.tui.showToast({
+          body: {
+            title: "TTS Reader",
+            message: `Profile '${profileName}' requires 'httpUrl' for ${profileToApply.backend} backend`,
+            variant: "warning",
+            duration: 3000,
+          },
+        })
+        return
+      }
+
       resetHttpCheck()
       resetKokoroCheck()
       resetOpenedAICheck()

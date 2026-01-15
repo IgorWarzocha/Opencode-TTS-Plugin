@@ -80,27 +80,52 @@ The plugin needs an audio player to play the generated speech:
 
 ## Configuration
 
-Defaults are stored at `~/.config/opencode/tts.jsonc` on first run. Edit that file to customize:
+Defaults are stored at `~/.config/opencode/tts.jsonc` on first run. Edit that file to customize profiles and settings.
+
+### Profile Switching
+
+You can switch between defined profiles at runtime:
+```bash
+/tts:profile openai
+/tts:profile default
+```
+
+### Security Considerations
+
+- **Trusted Backends**: The plugin sends text data to the configured `httpUrl`. Ensure you trust the backend server, especially when using remote APIs.
+- **Provider Options**: The `providerOptions` field in profiles allows passing raw JSON to the backend. These are passed **without validation** and can override core fields like `model` or `voice`.
+- **Authentication**: Use `httpHeaders` to securely pass API keys or Bearer tokens to remote providers.
+
+### Config Format (JSONC)
 
 ```jsonc
 // OpenCode TTS Reader configuration (JSONC)
 {
+  // Active profile name from the "profiles" object below
+  "activeProfile": "default",
   // Enable/disable TTS at startup
   "enabled": false,
-  // "local" (CPU) or "http" (Kokoro-FastAPI)
-  "backend": "local",
-  // Kokoro-FastAPI URL when backend is http
-  "httpUrl": "http://localhost:8880",
-  // Response format: "wav", "mp3", or "pcm"
-  "httpFormat": "wav",
   // "message" (each response) or "idle" (session idle)
   "speakOn": "message",
-  // Voice ID
-  "voice": "af_heart",
-  // Playback speed (0.5 - 2.0)
-  "speed": 1.0,
+  // Fallback to local (CPU) backend if HTTP fails
+  "fallbackToLocal": true,
   // Max local worker processes (0 disables pool)
   "maxWorkers": 2,
+
+  "profiles": {
+    "default": {
+      "backend": "local",
+      "voice": "af_heart",
+      "speed": 1.0
+    },
+    "kokoro-gpu": {
+      "backend": "kokoro",
+      "httpUrl": "http://localhost:8880",
+      "voice": "af_heart",
+      "speed": 1.0,
+      "httpFormat": "wav"
+    }
+  }
 }
 ```
 
