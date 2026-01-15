@@ -36,7 +36,7 @@ Copy the `command` folder to `.opencode/command/` - global or project-specific.
 
 On first use, the plugin downloads the Kokoro TTS model (~87MB). You'll see a toast notification when ready.
 
-### GPU Mode (Faster) - currently untested
+### GPU Mode (Faster)
 
 1. Start the Kokoro-FastAPI server with GPU:
 
@@ -45,17 +45,13 @@ On first use, the plugin downloads the Kokoro TTS model (~87MB). You'll see a to
 docker run -d --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:latest
 
 # CPU fallback (no GPU)
-docker run -d -p 8880:8880 ghcr.io/remsky/kokoro-fastapi:latest
+docker run -d -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
 ```
 
-2. Configure the plugin to use HTTP backend by editing `src/types.ts`:
+2. Configure the plugin to use HTTP backend by editing `~/.config/opencode/tts.jsonc` or switching profiles:
 
-```typescript
-export const DEFAULT_CONFIG: TtsConfig = {
-  backend: "http", // Use GPU server
-  httpUrl: "http://localhost:8880",
-  // ... rest of config
-}
+```bash
+/tts:profile kokoro-gpu
 ```
 
 ## Requirements
@@ -71,18 +67,18 @@ export const DEFAULT_CONFIG: TtsConfig = {
 The plugin uses cascading fallbacks to find an available audio player. It tries OS-bundled tools first, then common third-party options:
 
 **Linux (tried in order):**
-1. `paplay` (PulseAudio - most common)
-2. `aplay` (ALSA - fallback)
-3. `mpv` (if installed)
-4. `ffplay` (from ffmpeg - most compatible with HTTP engine)
+1. `ffplay` (from ffmpeg - most compatible with HTTP engine)
+2. `mpv` (if installed)
+3. `paplay` (PulseAudio)
+4. `aplay` (ALSA)
 
 **macOS (tried in order):**
-1. `afplay` (built-in - always available)
-2. `ffplay` (from ffmpeg - if installed)
+1. `ffplay` (from ffmpeg)
+2. `afplay` (built-in)
 
 **Windows (tried in order):**
-1. `Media.SoundPlayer` (PowerShell built-in - strict WAV format)
-2. `ffplay` (from ffmpeg - recommended for HTTP engine)
+1. `ffplay` (from ffmpeg - recommended for HTTP engine)
+2. `Media.SoundPlayer` (PowerShell built-in - strict WAV format)
 3. `wmplayer` (Windows Media Player - if installed)
 
 **Note on HTTP/GPU mode:** The HTTP engine returns WAV files that may not play with Windows' built-in Media.SoundPlayer. Installing ffmpeg is strongly recommended for Windows users using the HTTP backend.
@@ -103,11 +99,13 @@ Defaults are stored at `~/.config/opencode/tts.jsonc` on first run. Edit that fi
 
 ### Profile Switching
 
-You can switch between defined profiles at runtime:
+You can switch between defined profiles at runtime using the `/tts` command:
 ```bash
-/tts:profile openai
-/tts:profile default
+/tts profile openai
+/tts profile kokoro-gpu
 ```
+
+The plugin dynamically reloads command instructions from `.opencode/command/tts-on.md` if available in your project, or falls back to global/bundled defaults.
 
 ### Security Considerations
 
