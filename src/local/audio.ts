@@ -33,25 +33,25 @@ export async function writeTempWav(samples: Float32Array, sampleRate: number, in
 export async function playAudio(filePath: string, client?: ToastClient): Promise<void> {
   const platform = process.platform
 
-  // macOS fallbacks: afplay (built-in) → ffplay
+  // macOS fallbacks: ffplay (robust) → afplay (built-in)
   if (platform === "darwin") {
     const players = [
-      { cmd: ["afplay", filePath], name: "afplay" },
       { cmd: ["ffplay", "-autoexit", "-nodisp", "-loglevel", "quiet", filePath], name: "ffplay" },
+      { cmd: ["afplay", filePath], name: "afplay" },
     ]
     return await tryPlayers(players, platform, client)
   }
 
-  // Windows fallbacks: Media.SoundPlayer (built-in, strict) → ffplay (permissive) → wmplayer
+  // Windows fallbacks: ffplay (permissive) → Media.SoundPlayer (built-in, strict) → wmplayer
   if (platform === "win32") {
     const players = [
       {
-        cmd: ["powershell", "-c", `(New-Object Media.SoundPlayer '${filePath}').PlaySync()`],
-        name: "Media.SoundPlayer"
-      },
-      {
         cmd: ["ffplay", "-autoexit", "-nodisp", "-loglevel", "quiet", filePath],
         name: "ffplay"
+      },
+      {
+        cmd: ["powershell", "-c", `(New-Object Media.SoundPlayer '${filePath}').PlaySync()`],
+        name: "Media.SoundPlayer"
       },
       {
         cmd: ["wmplayer", "/close", "/prefetch:1", filePath],
@@ -61,12 +61,12 @@ export async function playAudio(filePath: string, client?: ToastClient): Promise
     return await tryPlayers(players, platform, client)
   }
 
-  // Linux fallbacks: paplay (PulseAudio) → aplay (ALSA) → mpv → ffplay
+  // Linux fallbacks: ffplay (robust) → mpv → paplay (PulseAudio) → aplay (ALSA)
   const players = [
+    { cmd: ["ffplay", "-autoexit", "-nodisp", "-loglevel", "quiet", filePath], name: "ffplay" },
+    { cmd: ["mpv", "--no-video", "--no-terminal", filePath], name: "mpv" },
     { cmd: ["paplay", filePath], name: "paplay" },
     { cmd: ["aplay", filePath], name: "aplay" },
-    { cmd: ["mpv", "--no-video", "--no-terminal", filePath], name: "mpv" },
-    { cmd: ["ffplay", "-autoexit", "-nodisp", "-loglevel", "quiet", filePath], name: "ffplay" },
   ]
   return await tryPlayers(players, platform, client)
 }
@@ -76,23 +76,11 @@ async function tryPlayers(
   platform: string,
   client?: ToastClient
 ): Promise<void> {
-  // Try last working player first (cache hit)
-  if (lastWorkingPlayer) {
-    const cached = players.find(p => p.name === lastWorkingPlayer)
-    if (cached) {
-      const status = await runCommand(cached.cmd)
-      if (status === 0) return
-      // Cache miss - reset and try all players
-      lastWorkingPlayer = null
-    }
-  }
-
   // Try each player in order
   const errors: string[] = []
   for (const player of players) {
     const status = await runCommand(player.cmd)
     if (status === 0) {
-      lastWorkingPlayer = player.name
       return
     }
     errors.push(player.name)
@@ -152,13 +140,17 @@ export function cancelAudioPlayback(): void {
 }
 
 async function runCommand(cmd: string[]): Promise<number> {
-  const proc = Bun.spawn(cmd, { stderr: "ignore", stdout: "ignore" }) as Subprocess
-  currentProcess = proc
-  const code = await proc.exited
-  if (currentProcess === proc) {
-    currentProcess = null
+  try {
+    const proc = Bun.spawn(cmd, { stderr: "ignore", stdout: "ignore" }) as Subprocess
+    currentProcess = proc
+    const code = await proc.exited
+    if (currentProcess === proc) {
+      currentProcess = null
+    }
+    return code
+  } catch {
+    return 1 // Command failed to spawn (e.g. executable not found)
   }
-  return code
 }
 
 async function writeWav(path: string, samples: Float32Array, sampleRate: number): Promise<void> {
