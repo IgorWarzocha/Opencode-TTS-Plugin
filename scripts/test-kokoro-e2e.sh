@@ -213,7 +213,7 @@ fi
 
 # Very long text
 log_info "Testing long text..."
-LONG_TEXT="This is a test. "$(printf "%.0s" {1..100}) # Repetitive text
+LONG_TEXT="This is a very long text used for testing purposes, repeated multiple times to ensure the input is sufficiently large for stress testing the TTS engine. This is a very long text used for testing purposes, repeated multiple times to ensure the input is sufficiently large for stress testing the TTS engine."
 LONG_FILE="$TEST_OUTPUT_DIR/test-long.wav"
 
 HTTP_CODE=$(curl -s -X POST "$KOKORO_URL/v1/audio/speech" \

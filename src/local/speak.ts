@@ -126,5 +126,5 @@ export async function speakLocal(text: string, config: TtsConfig): Promise<void>
 
 async function cleanupFiles(files: string[]): Promise<void> {
   if (files.length === 0) return
-  await Promise.all(files.map((file) => unlink(file)))
+  await Promise.allSettled(files.map((file) => unlink(file).catch(() => {})))
 }

@@ -52,7 +52,7 @@ async function synthesizeChunk(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       input: text,
-      model: config.openedaiModel || "tts-1",
+      model: config.model || config.openedaiModel || "tts-1",
       voice: config.voice || "alloy",
       speed: config.speed || 1.0,
       response_format: config.httpFormat || "wav",

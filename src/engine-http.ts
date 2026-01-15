@@ -102,8 +102,8 @@ export async function speakHttp(text: string, config: TtsConfig): Promise<void> 
       const arrayBuffer = await file.arrayBuffer()
       const base64 = Buffer.from(arrayBuffer).toString("base64")
       providerOptions.speaker_wav = base64
-    } catch {
-      // Keep original value on failure
+    } catch (e) {
+      console.warn(`[TTS] Failed to read speaker_wav file: ${providerOptions.speaker_wav}`, e)
     }
   }
 

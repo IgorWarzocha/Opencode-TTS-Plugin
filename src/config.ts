@@ -90,11 +90,16 @@ export async function loadConfig(): Promise<TtsConfig> {
   const activeProfileName = parsed.activeProfile || DEFAULT_CONFIG.activeProfile
   const profile = profiles[activeProfileName] || DEFAULT_CONFIG.profiles.default
 
-  // Merge: Defaults -> Profile settings -> Top-level overrides
+  // Merge: Defaults -> Profile settings -> Selective top-level overrides
   const config: TtsConfig = {
     ...DEFAULT_CONFIG,
     ...profile,
-    ...parsed,
+    // Selectively apply top-level settings from parsed config to avoid legacy field pollution
+    enabled: parsed.enabled ?? DEFAULT_CONFIG.enabled,
+    speakOn: parsed.speakOn ?? DEFAULT_CONFIG.speakOn,
+    fallbackToLocal: parsed.fallbackToLocal ?? DEFAULT_CONFIG.fallbackToLocal,
+    maxWorkers: parsed.maxWorkers ?? DEFAULT_CONFIG.maxWorkers,
+    activeProfile: activeProfileName,
     profiles, // Ensure profiles are preserved
   }
 

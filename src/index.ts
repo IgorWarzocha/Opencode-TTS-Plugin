@@ -158,14 +158,15 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
       cancelTts(config)
     }
 
-    if (config.enabled) {
-      if (backendChanged || maxWorkersChanged || httpUrlChanged) {
-        cancelTts(config)
-        resetHttpCheck()
-        resetOpenedAICheck()
+      if (config.enabled) {
+        if (backendChanged || maxWorkersChanged || httpUrlChanged) {
+          cancelTts(config)
+          resetHttpCheck()
+          resetOpenedAICheck()
+          resetKokoroCheck()
+        }
+        await initTts(config)
       }
-      await initTts(config)
-    }
 
     if (config.enabled && latestMessageID && latestMessageText && lastSpokenMessageID !== latestMessageID) {
       void speakText(latestMessageID, latestMessageText)
