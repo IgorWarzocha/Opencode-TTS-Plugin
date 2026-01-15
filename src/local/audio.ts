@@ -20,7 +20,7 @@ export type ToastClient = {
         variant: "info" | "success" | "warning" | "error"
         duration?: number
       }
-    }) => Promise<any>
+    }) => Promise<void>
   }
 }
 
