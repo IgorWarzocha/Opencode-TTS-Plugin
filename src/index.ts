@@ -8,9 +8,12 @@ import * as path from "path"
 import * as url from "url"
 import { loadConfig } from "./config"
 import { cancelTts, interruptTts, initTts, isReady, speak } from "./engine"
+import { resetHttpCheck } from "./engine-http"
+import { resetKokoroCheck } from "./engine-kokoro"
+import { resetOpenedAICheck } from "./engine-openedai"
 import { loadTtsNotice } from "./notice"
 import { createSessionGuard } from "./session"
-import { normalizeCommandArgs, parseTtsCommand } from "./text"
+import { parseTtsCommand } from "./text"
 import type { TtsConfig } from "./types"
 
 export const TtsReaderPlugin: Plugin = async ({ client }) => {
@@ -62,6 +65,73 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
   }, 5000)
 
   const applyTtsCommand = async (args: string): Promise<void> => {
+    if (args.startsWith("profile ")) {
+      const profileName = args.slice(8).trim()
+      const loaded = await loadConfig()
+      const profiles = loaded.profiles
+      
+      if (!profiles || !profiles[profileName]) {
+        await client.tui.showToast({
+          body: {
+            title: "TTS Reader",
+            message: `Profile '${profileName}' not found in tts.jsonc`,
+            variant: "warning",
+            duration: 3000,
+          },
+        })
+        return
+      }
+
+      const profileToApply = profiles[profileName]
+      if (!profileToApply.backend) {
+        await client.tui.showToast({
+          body: {
+            title: "TTS Reader",
+            message: `Profile '${profileName}' is missing required 'backend' field`,
+            variant: "warning",
+            duration: 3000,
+          },
+        })
+        return
+      }
+
+      // Validate required httpUrl for HTTP-based backends
+      const needsUrl = ["http", "openedai", "kokoro"].includes(profileToApply.backend)
+      if (needsUrl && !profileToApply.httpUrl) {
+        await client.tui.showToast({
+          body: {
+            title: "TTS Reader",
+            message: `Profile '${profileName}' requires 'httpUrl' for ${profileToApply.backend} backend`,
+            variant: "warning",
+            duration: 3000,
+          },
+        })
+        return
+      }
+
+      resetHttpCheck()
+      resetKokoroCheck()
+      resetOpenedAICheck()
+      
+      // Update our live config object
+      const wasEnabled = config.enabled
+      Object.assign(config, loaded, profileToApply)
+      config.activeProfile = profileName
+      config.enabled = wasEnabled
+
+      await initTts(config)
+      
+      await client.tui.showToast({
+        body: {
+          title: "TTS Reader",
+          message: `Switched to profile: ${profileName}`,
+          variant: "success",
+          duration: 2000,
+        },
+      })
+      return
+    }
+
     const wantsOn = args.includes("on") || args.includes("enable")
     const wantsOff = args.includes("off") || args.includes("disable")
 
@@ -88,12 +158,15 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
       cancelTts(config)
     }
 
-    if (config.enabled) {
-      if (backendChanged || maxWorkersChanged || httpUrlChanged) {
-        cancelTts(config)
+      if (config.enabled) {
+        if (backendChanged || maxWorkersChanged || httpUrlChanged) {
+          cancelTts(config)
+          resetHttpCheck()
+          resetOpenedAICheck()
+          resetKokoroCheck()
+        }
+        await initTts(config)
       }
-      await initTts(config)
-    }
 
     if (config.enabled && latestMessageID && latestMessageText && lastSpokenMessageID !== latestMessageID) {
       void speakText(latestMessageID, latestMessageText)
@@ -130,7 +203,18 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
       .trim()
 
     if (cleanText.length === 0) return
-    await speak(cleanText, config)
+    try {
+      await speak(cleanText, config)
+    } catch (e) {
+      await client.tui.showToast({
+        body: {
+          title: "TTS Reader",
+          message: "Failed to synthesize speech (all backends failed)",
+          variant: "error",
+          duration: 3000,
+        },
+      })
+    }
   }
 
   return {
@@ -177,7 +261,7 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
         }
         if (command.startsWith("tts")) {
           promptState.skipCommandExecuted = true
-          await applyTtsCommand(normalizeCommandArgs(command.slice(3)))
+          await applyTtsCommand(command.slice(3).trim().toLowerCase())
           return
         }
       }

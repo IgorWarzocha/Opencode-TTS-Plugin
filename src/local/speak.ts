@@ -4,10 +4,12 @@
  */
 
 import { unlink } from "fs/promises"
-import type { TtsConfig } from "../types"
+import { splitTextIntoChunks } from "../text"
+import { AVAILABLE_VOICES, type TtsConfig, type VoiceName } from "../types"
 import { cancelAudioPlayback, playAudio, writeTempWav } from "./audio"
 import { loadLocalModel, type KokoroModel } from "./model"
 import { createWorkerPool, type WorkerPool } from "./pool"
+import { isValidVoice } from "./validate"
 
 let pool: WorkerPool | null = null
 let poolReady = false
@@ -71,34 +73,25 @@ export async function speakLocal(text: string, config: TtsConfig): Promise<void>
   if (!ready) return
   if (token !== cancelToken) return
 
-  const chunks = splitText(trimmed)
-  if (chunks.length === 0) {
-    return
-  }
+  const chunks = splitTextIntoChunks(trimmed)
+  if (chunks.length === 0) return
 
   const files: string[] = []
-
-  if (token !== cancelToken) {
-    return
-  }
+  if (token !== cancelToken) return
 
   if (config.maxWorkers <= 0 && localModel) {
     const model = localModel
     const playDirect = async () => {
       for (let i = 0; i < chunks.length; i++) {
-        if (!config.enabled || token !== cancelToken) {
-          break
-        }
+        if (!config.enabled || token !== cancelToken) break
         const audio = await model.generate(chunks[i], {
-          voice: config.voice,
-          speed: config.speed,
+          voice: isValidVoice(config.voice) ? config.voice : "af_heart",
+          speed: config.speed || 1.0,
         })
         const samples = audio.audio as Float32Array
         const filePath = await writeTempWav(samples, 24000, i)
         files.push(filePath)
-        if (!config.enabled || token !== cancelToken) {
-          break
-        }
+        if (!config.enabled || token !== cancelToken) break
         await playAudio(filePath)
       }
     }
@@ -118,14 +111,10 @@ export async function speakLocal(text: string, config: TtsConfig): Promise<void>
 
   const playFromWorkers = async () => {
     for (let i = 0; i < tasks.length; i++) {
-      if (!config.enabled || token !== cancelToken) {
-        break
-      }
+      if (!config.enabled || token !== cancelToken) break
       const result = await tasks[i]
       files.push(result.path)
-      if (!config.enabled || token !== cancelToken) {
-        break
-      }
+      if (!config.enabled || token !== cancelToken) break
       await playAudio(result.path)
     }
   }
@@ -135,45 +124,7 @@ export async function speakLocal(text: string, config: TtsConfig): Promise<void>
   })
 }
 
-function splitText(text: string): string[] {
-  const maxLength = 240
-  const parts = text.match(/[^.!?\n]+[.!?\n]*|[\n]+/g) || [text]
-  const chunks: string[] = []
-
-  for (const part of parts) {
-    const trimmed = part.trim()
-    if (!trimmed) continue
-    if (trimmed.length <= maxLength) {
-      chunks.push(trimmed)
-      continue
-    }
-
-    const words = trimmed.split(/\s+/)
-    let current = ""
-
-    for (const word of words) {
-      if (!word) continue
-      if (!current) {
-        current = word
-        continue
-      }
-      if (current.length + word.length + 1 <= maxLength) {
-        current = `${current} ${word}`
-        continue
-      }
-      chunks.push(current)
-      current = word
-    }
-
-    if (current) {
-      chunks.push(current)
-    }
-  }
-
-  return chunks
-}
-
 async function cleanupFiles(files: string[]): Promise<void> {
   if (files.length === 0) return
-  await Promise.all(files.map((file) => unlink(file)))
+  await Promise.allSettled(files.map((file) => unlink(file).catch(() => {})))
 }

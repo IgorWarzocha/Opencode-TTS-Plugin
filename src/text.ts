@@ -1,6 +1,6 @@
 /**
  * Extracts text content and parses TTS command strings.
- * Normalizes command arguments for consistent toggle behavior.
+ * Provides text chunking for progressive TTS playback.
  */
 
 export const extractTextPart = (parts: Array<{ type: string; text?: string }>): string => {
@@ -26,4 +26,45 @@ export const normalizeCommandArgs = (raw: string): string => {
   const cleaned = raw.trim().toLowerCase()
   if (cleaned.startsWith(":")) return cleaned.slice(1).trim()
   return cleaned
+}
+
+/**
+ * Splits text into chunks for progressive TTS playback.
+ * Breaks at sentence boundaries, then by words if too long.
+ */
+export function splitTextIntoChunks(text: string, maxLength = 240): string[] {
+  const parts = text.match(/[^.!?\n]+[.!?\n]*|[\n]+/g) || [text]
+  const chunks: string[] = []
+
+  for (const part of parts) {
+    const trimmed = part.trim()
+    if (!trimmed) continue
+    if (trimmed.length <= maxLength) {
+      chunks.push(trimmed)
+      continue
+    }
+
+    const words = trimmed.split(/\s+/)
+    let current = ""
+
+    for (const word of words) {
+      if (!word) continue
+      if (!current) {
+        current = word
+        continue
+      }
+      if (current.length + word.length + 1 <= maxLength) {
+        current = `${current} ${word}`
+        continue
+      }
+      chunks.push(current)
+      current = word
+    }
+
+    if (current) {
+      chunks.push(current)
+    }
+  }
+
+  return chunks
 }
