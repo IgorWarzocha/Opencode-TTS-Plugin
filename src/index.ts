@@ -34,7 +34,8 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
 
   setTimeout(async () => {
     const success = await initTts(config)
-    const backendLabel = config.backend === "http" ? "HTTP (GPU)" : "Local (CPU)"
+    const isGpuBackend = config.backend === "http" || config.backend === "kokoro" || config.backend === "openedai"
+    const backendLabel = isGpuBackend ? "HTTP (GPU)" : "Local (CPU)"
     const modeLabel = config.speakOn === "message" ? "per-message" : "on-idle"
 
     if (success) {
@@ -49,10 +50,17 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
       return
     }
 
-    const helpMsg =
-      config.backend === "http"
-        ? `Cannot reach ${config.httpUrl}. Start server: docker run -d --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:latest`
-        : "Failed to load TTS. Run: cd .opencode/plugin/tts-reader && bun install"
+    let helpMsg: string
+
+    if (config.backend === "kokoro") {
+      helpMsg = `Cannot reach ${config.httpUrl}. Start Kokoro-FastAPI:\n• uvicorn kokoro_fastapi.server:app --host 0.0.0.0 --port 8880\n• Or: docker run -d --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:latest`
+    } else if (config.backend === "openedai") {
+      helpMsg = `Cannot reach ${config.httpUrl}. Start OpenedAI-Speech server`
+    } else if (config.backend === "http") {
+      helpMsg = `Cannot reach ${config.httpUrl}. Start your HTTP TTS server or configure correct httpUrl in ~/.config/opencode/tts.jsonc`
+    } else {
+      helpMsg = "Failed to load TTS. Run: cd .opencode/plugin/tts-reader && bun install"
+    }
 
     await client.tui.showToast({
       body: {
