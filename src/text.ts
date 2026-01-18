@@ -3,6 +3,8 @@
  * Provides text chunking for progressive TTS playback.
  */
 
+import { DEFAULT_CHUNK_LENGTH } from "./constants"
+
 export const extractTextPart = (parts: Array<{ type: string; text?: string }>): string => {
   for (const part of parts) {
     if (part.type === "text" && part.text) {
@@ -26,7 +28,8 @@ export const normalizeCommandArgs = (raw: string): string => {
  * Splits text into chunks for progressive TTS playback.
  * Breaks at sentence boundaries, then by words if too long.
  */
-export function splitTextIntoChunks(text: string, maxLength = 240): string[] {
+
+export function splitTextIntoChunks(text: string, maxLength = DEFAULT_CHUNK_LENGTH): string[] {
   const parts = text.match(/[^.!?\n]+[.!?\n]*|[\n]+/g) || [text]
   const chunks: string[] = []
 

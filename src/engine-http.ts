@@ -4,44 +4,18 @@
  * Handles providerOptions for advanced features like voice cloning.
  */
 
-import { unlink } from "fs/promises"
 import { tmpdir } from "os"
 import { join } from "path"
 import { cancelAudioPlayback, playAudio, type ToastClient } from "./local/audio"
 import { splitTextIntoChunks } from "./text"
 import type { TtsConfig } from "./types"
+import { cleanupFiles, createServerCheck, normalizeProviderOptions } from "./backends"
 
-let serverAvailable = false
-let serverChecked = false
 let cancelToken = 0
+const serverCheck = createServerCheck()
 
 export async function checkHttpServer(config: TtsConfig): Promise<boolean> {
-  if (serverChecked) return serverAvailable
-  if (!config.httpUrl) return false
-
-  try {
-    const modelsUrl = `${config.httpUrl}/v1/models`
-    const response = await fetch(modelsUrl, {
-      method: "GET",
-      headers: config.httpHeaders || {},
-      signal: AbortSignal.timeout(3000),
-    })
-    serverAvailable = response.ok
-  } catch {
-    try {
-      const response = await fetch(config.httpUrl, {
-        method: "HEAD",
-        headers: config.httpHeaders || {},
-        signal: AbortSignal.timeout(3000),
-      })
-      serverAvailable = response.ok
-    } catch {
-      serverAvailable = false
-    }
-  }
-
-  serverChecked = true
-  return serverAvailable
+  return serverCheck.check(config.httpUrl, config.httpHeaders)
 }
 
 async function synthesizeChunk(
@@ -91,21 +65,7 @@ export async function speakHttp(text: string, config: TtsConfig, client?: ToastC
   const chunks = splitTextIntoChunks(trimmed)
   if (chunks.length === 0) return
 
-  const providerOptions: Record<string, unknown> = { ...(config.providerOptions || {}) }
-
-  if (
-    typeof providerOptions.speaker_wav === "string" &&
-    (await Bun.file(providerOptions.speaker_wav as string).exists())
-  ) {
-    try {
-      const file = Bun.file(providerOptions.speaker_wav as string)
-      const arrayBuffer = await file.arrayBuffer()
-      const base64 = Buffer.from(arrayBuffer).toString("base64")
-      providerOptions.speaker_wav = base64
-    } catch (e) {
-      console.warn(`[TTS] Failed to read speaker_wav file: ${providerOptions.speaker_wav}`, e)
-    }
-  }
+  const providerOptions = await normalizeProviderOptions(config.providerOptions, client)
 
   const synthesisPromises = chunks.map((chunk, i) =>
     synthesizeChunk(chunk, i, config, providerOptions)
@@ -136,15 +96,9 @@ export function cancelHttpSpeak(): void {
 }
 
 export function isHttpReady(): boolean {
-  return serverAvailable
+  return serverCheck.state.available
 }
 
 export function resetHttpCheck(): void {
-  serverChecked = false
-  serverAvailable = false
-}
-
-async function cleanupFiles(files: string[]): Promise<void> {
-  if (files.length === 0) return
-  await Promise.allSettled(files.map((f) => unlink(f).catch(() => {})))
+  serverCheck.reset()
 }

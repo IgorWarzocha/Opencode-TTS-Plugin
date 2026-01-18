@@ -5,16 +5,15 @@
  * See: https://github.com/remsky/Kokoro-FastAPI
  */
 
-import { unlink } from "fs/promises"
 import { tmpdir } from "os"
 import { join } from "path"
 import { cancelAudioPlayback, playAudio, type ToastClient } from "./local/audio"
 import { splitTextIntoChunks } from "./text"
 import type { TtsConfig } from "./types"
+import { cleanupFiles, createServerCheck, normalizeProviderOptions } from "./backends"
 
-let serverAvailable = false
-let serverChecked = false
 let cancelToken = 0
+const serverCheck = createServerCheck()
 
 /** Kokoro voices (same as local kokoro-js) */
 export const KOKORO_VOICES = [
@@ -34,21 +33,7 @@ export const KOKORO_VOICES = [
 export type KokoroVoice = (typeof KOKORO_VOICES)[number]
 
 export async function checkKokoroServer(config: TtsConfig): Promise<boolean> {
-  if (serverChecked) return serverAvailable
-  if (!config.httpUrl) return false
-
-  try {
-    const response = await fetch(`${config.httpUrl}/v1/models`, {
-      method: "GET",
-      signal: AbortSignal.timeout(3000),
-    })
-    serverAvailable = response.ok
-  } catch {
-    serverAvailable = false
-  }
-
-  serverChecked = true
-  return serverAvailable
+  return serverCheck.check(config.httpUrl)
 }
 
 async function synthesizeChunk(
@@ -92,7 +77,7 @@ export async function speakKokoro(text: string, config: TtsConfig, client?: Toas
   const chunks = splitTextIntoChunks(trimmed)
   if (chunks.length === 0) return
 
-  const providerOptions: Record<string, unknown> = { ...(config.providerOptions || {}) }
+  const providerOptions = await normalizeProviderOptions(config.providerOptions, client)
   const synthesisPromises = chunks.map((chunk, i) => synthesizeChunk(chunk, i, config, providerOptions))
 
   const files: string[] = []
@@ -120,15 +105,9 @@ export function cancelKokoroSpeak(): void {
 }
 
 export function isKokoroReady(): boolean {
-  return serverAvailable
+  return serverCheck.state.available
 }
 
 export function resetKokoroCheck(): void {
-  serverChecked = false
-  serverAvailable = false
-}
-
-async function cleanupFiles(files: string[]): Promise<void> {
-  if (files.length === 0) return
-  await Promise.allSettled(files.map((f) => unlink(f).catch(() => {})))
+  serverCheck.reset()
 }

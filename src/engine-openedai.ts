@@ -5,16 +5,15 @@
  * See: https://github.com/matatonic/openedai-speech
  */
 
-import { unlink } from "fs/promises"
 import { tmpdir } from "os"
 import { join } from "path"
 import { cancelAudioPlayback, playAudio, type ToastClient } from "./local/audio"
 import { splitTextIntoChunks } from "./text"
 import type { TtsConfig } from "./types"
+import { cleanupFiles, createServerCheck, normalizeProviderOptions } from "./backends"
 
-let serverAvailable = false
-let serverChecked = false
 let cancelToken = 0
+const serverCheck = createServerCheck()
 
 /** Available OpenedAI models */
 export const OPENEDAI_MODELS = ["tts-1", "tts-1-hd"] as const
@@ -25,21 +24,7 @@ export const OPENEDAI_VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimm
 export type OpenedAIVoice = (typeof OPENEDAI_VOICES)[number]
 
 export async function checkOpenedAIServer(config: TtsConfig): Promise<boolean> {
-  if (serverChecked) return serverAvailable
-  if (!config.httpUrl) return false
-
-  try {
-    const response = await fetch(`${config.httpUrl}/v1/models`, {
-      method: "GET",
-      signal: AbortSignal.timeout(3000),
-    })
-    serverAvailable = response.ok
-  } catch {
-    serverAvailable = false
-  }
-
-  serverChecked = true
-  return serverAvailable
+  return serverCheck.check(config.httpUrl)
 }
 
 async function synthesizeChunk(
@@ -83,22 +68,7 @@ export async function speakOpenedAI(text: string, config: TtsConfig, client?: To
   const chunks = splitTextIntoChunks(trimmed)
   if (chunks.length === 0) return
 
-  const providerOptions: Record<string, unknown> = { ...(config.providerOptions || {}) }
-
-  // Handle speaker_wav to base64 conversion for voice cloning
-  if (
-    typeof providerOptions.speaker_wav === "string" &&
-    (await Bun.file(providerOptions.speaker_wav as string).exists())
-  ) {
-    try {
-      const file = Bun.file(providerOptions.speaker_wav as string)
-      const arrayBuffer = await file.arrayBuffer()
-      const base64 = Buffer.from(arrayBuffer).toString("base64")
-      providerOptions.speaker_wav = base64
-    } catch (e) {
-      console.warn(`[TTS] Failed to read speaker_wav file: ${providerOptions.speaker_wav}`, e)
-    }
-  }
+  const providerOptions = await normalizeProviderOptions(config.providerOptions, client)
 
   const synthesisPromises = chunks.map((chunk, i) => synthesizeChunk(chunk, i, config, providerOptions))
 
@@ -127,15 +97,9 @@ export function cancelOpenedAISpeak(): void {
 }
 
 export function isOpenedAIReady(): boolean {
-  return serverAvailable
+  return serverCheck.state.available
 }
 
 export function resetOpenedAICheck(): void {
-  serverChecked = false
-  serverAvailable = false
-}
-
-async function cleanupFiles(files: string[]): Promise<void> {
-  if (files.length === 0) return
-  await Promise.allSettled(files.map((f) => unlink(f).catch(() => {})))
+  serverCheck.reset()
 }

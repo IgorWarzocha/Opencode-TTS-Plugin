@@ -9,103 +9,73 @@ import { cancelKokoroSpeak, checkKokoroServer, isKokoroReady, speakKokoro } from
 import { cancelOpenedAISpeak, checkOpenedAIServer, isOpenedAIReady, speakOpenedAI } from "./engine-openedai"
 import { cancelLocalSpeak, initLocalTts, interruptLocalSpeak, isLocalReady, speakLocal, type ToastClient } from "./local"
 
+export type BackendHandler = {
+  init: (config: TtsConfig) => Promise<boolean>
+  speak: (text: string, config: TtsConfig, client?: ToastClient) => Promise<void>
+  isReady: (config: TtsConfig) => boolean
+  cancel: () => void
+  interrupt: () => void
+}
+
+const createBackendRegistry = (): Record<TtsConfig["backend"], BackendHandler> => ({
+  local: {
+    init: initLocalTts,
+    speak: speakLocal,
+    isReady: () => isLocalReady(),
+    cancel: () => cancelLocalSpeak(),
+    interrupt: () => interruptLocalSpeak(),
+  },
+  http: {
+    init: checkHttpServer,
+    speak: speakHttp,
+    isReady: (config) => isHttpReady() || (config.fallbackToLocal && isLocalReady()),
+    cancel: () => cancelHttpSpeak(),
+    interrupt: () => cancelHttpSpeak(),
+  },
+  openedai: {
+    init: checkOpenedAIServer,
+    speak: speakOpenedAI,
+    isReady: (config) => isOpenedAIReady() || (config.fallbackToLocal && isLocalReady()),
+    cancel: () => cancelOpenedAISpeak(),
+    interrupt: () => cancelOpenedAISpeak(),
+  },
+  kokoro: {
+    init: checkKokoroServer,
+    speak: speakKokoro,
+    isReady: (config) => isKokoroReady() || (config.fallbackToLocal && isLocalReady()),
+    cancel: () => cancelKokoroSpeak(),
+    interrupt: () => cancelKokoroSpeak(),
+  },
+})
+
+const backendRegistry = createBackendRegistry()
+
 export async function initTts(config: TtsConfig): Promise<boolean> {
-  switch (config.backend) {
-    case "kokoro":
-      return checkKokoroServer(config)
-    case "openedai":
-      return checkOpenedAIServer(config)
-    case "http":
-      return checkHttpServer(config)
-    default:
-      return initLocalTts(config)
-  }
+  return backendRegistry[config.backend].init(config)
 }
 
 export async function speak(text: string, config: TtsConfig, client?: ToastClient): Promise<void> {
-  switch (config.backend) {
-    case "kokoro":
-      try {
-        await speakKokoro(text, config, client)
-        return
-      } catch (error) {
-        if (config.fallbackToLocal && isLocalReady()) {
-          await speakLocal(text, config, client)
-          return
-        }
-        throw error
-      }
-
-    case "openedai":
-      try {
-        await speakOpenedAI(text, config, client)
-        return
-      } catch (error) {
-        if (config.fallbackToLocal && isLocalReady()) {
-          await speakLocal(text, config, client)
-          return
-        }
-        throw error
-      }
-
-    case "http":
-      try {
-        await speakHttp(text, config, client)
-        return
-      } catch (error) {
-        if (config.fallbackToLocal && isLocalReady()) {
-          await speakLocal(text, config, client)
-          return
-        }
-        throw error
-      }
-
-    default:
-      await speakLocal(text, config, client)
+  const backend = backendRegistry[config.backend]
+  try {
+    await backend.speak(text, config, client)
+    return
+  } catch (error) {
+    if (config.fallbackToLocal && isLocalReady() && config.backend !== "local") {
+      await backendRegistry.local.speak(text, config, client)
+      return
+    }
+    throw error
   }
 }
 
 export function isReady(config: TtsConfig): boolean {
-  switch (config.backend) {
-    case "kokoro":
-      return isKokoroReady() || (config.fallbackToLocal && isLocalReady())
-    case "openedai":
-      return isOpenedAIReady() || (config.fallbackToLocal && isLocalReady())
-    case "http":
-      return isHttpReady() || (config.fallbackToLocal && isLocalReady())
-    default:
-      return isLocalReady()
-  }
+  return backendRegistry[config.backend].isReady(config)
 }
 
 export function cancelTts(config: TtsConfig): void {
-  switch (config.backend) {
-    case "kokoro":
-      cancelKokoroSpeak()
-      break
-    case "openedai":
-      cancelOpenedAISpeak()
-      break
-    case "http":
-      cancelHttpSpeak()
-      break
-    default:
-      cancelLocalSpeak()
-  }
+  backendRegistry[config.backend].cancel()
 }
 
 export function interruptTts(config: TtsConfig): void {
-  switch (config.backend) {
-    case "kokoro":
-      cancelKokoroSpeak()
-      break
-    case "openedai":
-      cancelOpenedAISpeak()
-      break
-    case "http":
-      cancelHttpSpeak()
-      break
-    default:
-      interruptLocalSpeak()
-  }
+  backendRegistry[config.backend].interrupt()
 }
