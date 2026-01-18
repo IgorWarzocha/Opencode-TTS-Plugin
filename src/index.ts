@@ -271,7 +271,7 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
             return
           }
         }
-        if (command.startsWith("tts")) {
+        if (command.startsWith("tts-on") || command.startsWith("tts-off") || command.startsWith("tts-profile") || command.startsWith("tts")) {
           promptState.skipCommandExecuted = true
           const parts = command.split(" ")
           const name = parts[0]
