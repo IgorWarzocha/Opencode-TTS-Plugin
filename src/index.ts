@@ -4,17 +4,18 @@
  */
 
 import type { Plugin } from "@opencode-ai/plugin"
+import type { Event, Part, UserMessage } from "@opencode-ai/sdk"
 import * as path from "path"
 import * as url from "url"
 import { loadConfig } from "./config"
-import { cancelTts, interruptTts, initTts, isReady, speak } from "./engine"
-import { resetHttpCheck } from "./engine-http"
-import { resetKokoroCheck } from "./engine-kokoro"
-import { resetOpenedAICheck } from "./engine-openedai"
+import { initTts } from "./engine"
 import { loadTtsNotice } from "./notice"
 import { createSessionGuard } from "./session"
-import { parseTtsCommand } from "./text"
+import { normalizeCommandArgs, parseTtsCommand } from "./text"
 import type { TtsConfig } from "./types"
+import { TOAST_DURATIONS } from "./constants"
+import { COMMAND_TEMPLATES, createCommandHandler, TTS_COMMAND_MARKER, type CommandState } from "./commands"
+import { createSpeaker } from "./speaker"
 
 export const TtsReaderPlugin: Plugin = async ({ client }) => {
   const pluginRoot = path.join(path.dirname(url.fileURLToPath(import.meta.url)), "..")
@@ -23,7 +24,6 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
 
   const promptState = {
     buffer: "",
-    skipCommandExecuted: false,
   }
 
   let activeSessionID: string | null = null
@@ -31,10 +31,34 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
   let latestMessageText: string | null = null
   let lastSpokenMessageID: string | null = null
   let ttsNotice = await loadTtsNotice(pluginRoot)
+  let lastCommand: CommandState = null
+
+  const setNotice = (notice: string) => {
+    ttsNotice = notice
+  }
+
+  const { speakText, speakLatest } = createSpeaker({
+    config,
+    getLastSpokenMessageID: () => lastSpokenMessageID,
+    setLastSpokenMessageID: (id) => {
+      lastSpokenMessageID = id
+    },
+    getLatestMessage: () => ({ id: latestMessageID, text: latestMessageText }),
+    client,
+  })
+
+  const { apply: applyTtsCommand } = createCommandHandler({
+    client,
+    pluginRoot,
+    config,
+    setNotice,
+    speakLatest,
+  })
 
   setTimeout(async () => {
     const success = await initTts(config)
-    const backendLabel = config.backend === "http" ? "HTTP (GPU)" : "Local (CPU)"
+    const isGpuBackend = config.backend === "http" || config.backend === "kokoro" || config.backend === "openedai"
+    const backendLabel = isGpuBackend ? "HTTP (GPU)" : "Local (CPU)"
     const modeLabel = config.speakOn === "message" ? "per-message" : "on-idle"
 
     if (success) {
@@ -43,186 +67,123 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
           title: "TTS Reader",
           message: `${backendLabel} backend ready (${modeLabel})`,
           variant: "success",
-          duration: 3000,
+          duration: TOAST_DURATIONS.success,
         },
       })
       return
     }
 
-    const helpMsg =
-      config.backend === "http"
-        ? `Cannot reach ${config.httpUrl}. Start server: docker run -d --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:latest`
-        : "Failed to load TTS. Run: cd .opencode/plugin/tts-reader && bun install"
+    let helpMsg: string
+
+    if (config.backend === "kokoro") {
+      helpMsg = `Cannot reach ${config.httpUrl}. Start Kokoro-FastAPI:\n• uvicorn kokoro_fastapi.server:app --host 0.0.0.0 --port 8880\n• Or: docker run -d --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:latest`
+    } else if (config.backend === "openedai") {
+      helpMsg = `Cannot reach ${config.httpUrl}. Start OpenedAI-Speech server`
+    } else if (config.backend === "http") {
+      helpMsg = `Cannot reach ${config.httpUrl}. Start your HTTP TTS server or configure correct httpUrl in ~/.config/opencode/tts.jsonc`
+    } else {
+      helpMsg = "Failed to load TTS. Run: cd .opencode/plugin/tts-reader && bun install"
+    }
 
     await client.tui.showToast({
       body: {
         title: "TTS Reader",
         message: helpMsg,
         variant: "warning",
-        duration: 7000,
+        duration: TOAST_DURATIONS.warning,
       },
     })
   }, 5000)
 
-  const applyTtsCommand = async (args: string): Promise<void> => {
-    if (args.startsWith("profile ")) {
-      const profileName = args.slice(8).trim()
-      const loaded = await loadConfig()
-      const profiles = loaded.profiles
-      
-      if (!profiles || !profiles[profileName]) {
-        await client.tui.showToast({
-          body: {
-            title: "TTS Reader",
-            message: `Profile '${profileName}' not found in tts.jsonc`,
-            variant: "warning",
-            duration: 3000,
-          },
-        })
-        return
-      }
-
-      const profileToApply = profiles[profileName]
-      if (!profileToApply.backend) {
-        await client.tui.showToast({
-          body: {
-            title: "TTS Reader",
-            message: `Profile '${profileName}' is missing required 'backend' field`,
-            variant: "warning",
-            duration: 3000,
-          },
-        })
-        return
-      }
-
-      // Validate required httpUrl for HTTP-based backends
-      const needsUrl = ["http", "openedai", "kokoro"].includes(profileToApply.backend)
-      if (needsUrl && !profileToApply.httpUrl) {
-        await client.tui.showToast({
-          body: {
-            title: "TTS Reader",
-            message: `Profile '${profileName}' requires 'httpUrl' for ${profileToApply.backend} backend`,
-            variant: "warning",
-            duration: 3000,
-          },
-        })
-        return
-      }
-
-      resetHttpCheck()
-      resetKokoroCheck()
-      resetOpenedAICheck()
-      
-      const wasEnabled = config.enabled
-      Object.assign(config, loaded, profileToApply)
-      config.activeProfile = profileName
-      config.enabled = wasEnabled
-      ttsNotice = await loadTtsNotice(pluginRoot)
-
-      await initTts(config)
-      
-      await client.tui.showToast({
-        body: {
-          title: "TTS Reader",
-          message: `Switched to profile: ${profileName}`,
-          variant: "success",
-          duration: 2000,
-        },
-      })
-      return
-    }
-
-    const wantsOn = args.includes("on") || args.includes("enable")
-    const wantsOff = args.includes("off") || args.includes("disable")
-
-    let nextEnabled = config.enabled
-    if (wantsOn) nextEnabled = true
-    if (wantsOff) nextEnabled = false
-    if (!wantsOn && !wantsOff) nextEnabled = !config.enabled
-
-    const previous = {
-      backend: config.backend,
-      maxWorkers: config.maxWorkers,
-      httpUrl: config.httpUrl,
-    }
-
-    const loaded = await loadConfig()
-    Object.assign(config, loaded)
-    config.enabled = nextEnabled
-    ttsNotice = await loadTtsNotice(pluginRoot)
-
-    const backendChanged = config.backend !== previous.backend
-    const maxWorkersChanged = config.maxWorkers !== previous.maxWorkers
-    const httpUrlChanged = config.httpUrl !== previous.httpUrl
-
-    if (!config.enabled) {
-      cancelTts(config)
-    }
-
-    if (config.enabled) {
-      if (backendChanged || maxWorkersChanged || httpUrlChanged) {
-        cancelTts(config)
-        resetHttpCheck()
-        resetOpenedAICheck()
-        resetKokoroCheck()
-      }
-      await initTts(config)
-    }
-
-    if (config.enabled && latestMessageID && latestMessageText && lastSpokenMessageID !== latestMessageID) {
-      void speakText(latestMessageID, latestMessageText)
-    }
-
-    const status = config.enabled ? "enabled" : "disabled"
-    await client.tui.showToast({
-      body: {
-        title: "TTS Reader",
-        message: `TTS ${status}`,
-        variant: config.enabled ? "success" : "warning",
-        duration: 2000,
-      },
-    })
-  }
-
-  const speakText = async (messageID: string, text: string): Promise<void> => {
-    if (lastSpokenMessageID === messageID) return
-    if (!config.enabled) {
-      cancelTts(config)
-      return
-    }
-    if (!isReady(config)) return
-
-    if (lastSpokenMessageID && lastSpokenMessageID !== messageID) {
-      interruptTts(config)
-    }
-
-    lastSpokenMessageID = messageID
-
-    const cleanText = text
-      .replace(/```[\s\S]*?```/g, " code block ")
-      .replace(/[#*_`]/g, "")
-      .trim()
-
-    if (cleanText.length === 0) return
-    try {
-      await speak(cleanText, config, client)
-    } catch (e) {
-      await client.tui.showToast({
-        body: {
-          title: "TTS Reader",
-          message: "Failed to synthesize speech (all backends failed)",
-          variant: "error",
-          duration: 3000,
-        },
-      })
-    }
-  }
-
   return {
-    "chat.message": async (input) => {
-      activeSessionID = input.sessionID
+    config: async (input: { command?: Record<string, { template: string; description?: string; agent?: string; model?: string; subtask?: boolean }> }) => {
+      input.command ??= {}
+      for (const [name, definition] of Object.entries(COMMAND_TEMPLATES)) {
+        input.command[name] = {
+          template: definition.template,
+          description: definition.description,
+        }
+      }
     },
-    "experimental.chat.system.transform": async (_, output) => {
+    "chat.message": async (
+      input: {
+        sessionID: string
+        agent?: string
+        model?: { providerID: string; modelID: string }
+        messageID?: string
+        variant?: string
+      },
+      output: { message: UserMessage; parts: Part[] }
+    ) => {
+      activeSessionID = input.sessionID
+
+      const hasMarker = output.parts.some((p) => p.type === "text" && p.text.includes(TTS_COMMAND_MARKER))
+      if (!hasMarker) return
+
+      if (lastCommand) {
+        const { name, args } = lastCommand
+        lastCommand = null
+
+        await applyTtsCommand(name, args)
+
+        if (name === "tts-profile") {
+          await client.session.prompt({
+            path: { id: input.sessionID },
+            body: {
+              noReply: true,
+              agent: input.agent,
+              model: input.model,
+              parts: [{ type: "text", text: "TTS profile updated.", ignored: true }],
+            },
+          })
+
+          throw new Error("__TTS_COMMAND_HANDLED__")
+        }
+
+        return
+      }
+
+      const fullText = output.parts.filter((p) => p.type === "text").map((p) => p.text).join(" ")
+      const profileMatch = fullText.match(/\/tts-profile(?:\s+(.*))?/)
+      const onMatch = fullText.match(/\/tts-on/)
+      const offMatch = fullText.match(/\/tts-off/)
+
+      const cleanedMarkerText = fullText.replaceAll(TTS_COMMAND_MARKER, "").trim()
+      const markerOnly = cleanedMarkerText.length === 0
+
+      const bufferedCommand = parseTtsCommand(promptState.buffer)
+      const bufferedArgs = bufferedCommand?.startsWith("profile") ? bufferedCommand.slice("profile".length).trim() : null
+
+      if (profileMatch || bufferedArgs !== null || markerOnly) {
+        const rawArgs = profileMatch ? profileMatch[1] || "" : bufferedArgs || ""
+        const args = normalizeCommandArgs(rawArgs)
+        promptState.buffer = ""
+        await applyTtsCommand("tts-profile", args)
+
+        await client.session.prompt({
+          path: { id: input.sessionID },
+          body: {
+            noReply: true,
+            agent: input.agent,
+            model: input.model,
+            parts: [{ type: "text", text: "TTS profile updated.", ignored: true }],
+          },
+        })
+
+        throw new Error("__TTS_COMMAND_HANDLED__")
+      }
+
+      if (onMatch) {
+        await applyTtsCommand("tts-on", "")
+        return
+      }
+
+      if (offMatch) {
+        await applyTtsCommand("tts-off", "")
+        return
+      }
+    },
+    "experimental.chat.system.transform": async (_: { sessionID: string }, output: { system: string[] }) => {
       if (!config.enabled) return
       if (!ttsNotice) return
       if (!activeSessionID) return
@@ -230,7 +191,7 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
       if (isChild) return
       output.system.push(ttsNotice)
     },
-    event: async ({ event }) => {
+    event: async ({ event }: { event: Event }) => {
       if (event.type === "message.part.updated") {
         const part = event.properties.part
         const isChild = await isChildSession(part.sessionID)
@@ -252,19 +213,17 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
           promptState.buffer = ""
           return
         }
-        if (command === "prompt.submit") {
-          const args = parseTtsCommand(promptState.buffer)
-          promptState.buffer = ""
-          if (args !== null) {
-            await applyTtsCommand(args)
-            return
-          }
-        }
-        if (command.startsWith("tts")) {
-          promptState.skipCommandExecuted = true
-          await applyTtsCommand(command.slice(3).trim().toLowerCase())
+      }
+
+      if (event.type === "command.executed" && event.properties.name.startsWith("tts")) {
+        const name = event.properties.name.trim().toLowerCase()
+        const args = event.properties.arguments.trim().toLowerCase()
+        if (name === "tts-profile") {
+          lastCommand = { name, args }
           return
         }
+        await applyTtsCommand(name, args)
+        return
       }
 
       if (config.speakOn === "message" && event.type === "message.updated") {
@@ -284,17 +243,6 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
         if (!latestMessageID || !latestMessageText) return
         await speakText(latestMessageID, latestMessageText)
         return
-      }
-
-      if (event.type === "command.executed" && event.properties.name.startsWith("tts")) {
-        if (promptState.skipCommandExecuted) {
-          promptState.skipCommandExecuted = false
-          return
-        }
-        const name = event.properties.name.trim().toLowerCase()
-        const argsFromName = name.startsWith("tts:") ? name.slice(4).trim() : ""
-        const args = argsFromName || event.properties.arguments.trim().toLowerCase()
-        await applyTtsCommand(args)
       }
     },
   }

@@ -7,6 +7,7 @@
 import { tmpdir } from "os"
 import { join } from "path"
 import type { Subprocess } from "bun"
+import { TOAST_DURATIONS } from "../constants"
 
 let currentProcess: Subprocess | null = null
 
@@ -94,7 +95,7 @@ async function tryPlayers(
           title: "TTS Audio Playback Failed",
           message: errorMsg,
           variant: "error",
-          duration: 8000,
+          duration: TOAST_DURATIONS.audio,
         },
       })
     } catch {

@@ -98,6 +98,6 @@ Modify your `~/.config/opencode/tts.jsonc` to include test profiles:
 
 Once the plugin is loaded in OpenCode, use the following commands to verify switching:
 
-- `/tts:profile gpu-kokoro` -> Should switch to the FastAPI server.
-- `/tts:profile default` -> Should switch back to local CPU (zero-conf).
-- `/tts:on` / `/tts:off` -> Verify global toggle.
+- `/tts profile gpu-kokoro` -> Should switch to the FastAPI server.
+- `/tts profile default` -> Should switch back to local CPU (zero-conf).
+- `/tts on` / `/tts off` -> Verify global toggle.
