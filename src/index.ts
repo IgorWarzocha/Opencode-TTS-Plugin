@@ -230,8 +230,27 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
   }
 
   return {
-    "chat.message": async (input) => {
+    "chat.message": async (input, output) => {
       activeSessionID = input.sessionID
+      
+      const isTtsCommand = output.parts.some((p) => p.type === "text" && p.text.includes("[TTS_COMMAND]"))
+      if (!isTtsCommand) return
+
+      // Extract command name and args from the prompt buffer or parts
+      const fullText = output.parts.filter(p => p.type === "text").map(p => p.text).join(" ")
+      const ttsMatch = fullText.match(/\/tts-([^\s]+)(?:\s+(.*))?/) || fullText.match(/\/tts(?:\s+(.*))?/)
+      
+      if (ttsMatch) {
+        const name = fullText.includes("/tts-") ? `tts-${ttsMatch[1]}` : "tts"
+        const args = ttsMatch[2] || ""
+        await applyTtsCommand(name, normalizeCommandArgs(args))
+
+        // Only switch profiles and ignore from LLM if specifically requested.
+        // tts-on/off MUST reach the model.
+        if (name === "tts-profile") {
+          throw new Error("__TTS_COMMAND_HANDLED__")
+        }
+      }
     },
     "experimental.chat.system.transform": async (_, output) => {
       if (!config.enabled) return
@@ -263,29 +282,6 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
           promptState.buffer = ""
           return
         }
-        if (command === "prompt.submit") {
-          const args = parseTtsCommand(promptState.buffer)
-          promptState.buffer = ""
-          if (args !== null) {
-            await applyTtsCommand("tts", args)
-            return
-          }
-        }
-        if (command.startsWith("tts-profile")) {
-          const parts = command.split(" ")
-          const name = parts[0]
-          const args = parts.slice(1).join(" ")
-          await applyTtsCommand(name, normalizeCommandArgs(args))
-          return
-        }
-        if (command.startsWith("tts-on") || command.startsWith("tts-off") || command.startsWith("tts")) {
-          promptState.skipCommandExecuted = true
-          const parts = command.split(" ")
-          const name = parts[0]
-          const args = parts.slice(1).join(" ")
-          await applyTtsCommand(name, normalizeCommandArgs(args))
-          return
-        }
       }
 
       if (config.speakOn === "message" && event.type === "message.updated") {
@@ -308,10 +304,6 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
       }
 
       if (event.type === "command.executed" && event.properties.name.startsWith("tts")) {
-        if (promptState.skipCommandExecuted) {
-          promptState.skipCommandExecuted = false
-          return
-        }
         const name = event.properties.name.trim().toLowerCase()
         const args = event.properties.arguments.trim().toLowerCase()
         await applyTtsCommand(name, args)
