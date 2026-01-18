@@ -13,7 +13,7 @@ import { resetKokoroCheck } from "./engine-kokoro"
 import { resetOpenedAICheck } from "./engine-openedai"
 import { loadTtsNotice } from "./notice"
 import { createSessionGuard } from "./session"
-import { parseTtsCommand } from "./text"
+import { normalizeCommandArgs, parseTtsCommand } from "./text"
 import type { TtsConfig } from "./types"
 
 export const TtsReaderPlugin: Plugin = async ({ client }) => {
@@ -270,7 +270,7 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
         }
         if (command.startsWith("tts")) {
           promptState.skipCommandExecuted = true
-          await applyTtsCommand(command.slice(3).trim().toLowerCase())
+          await applyTtsCommand(normalizeCommandArgs(command.slice(3)))
           return
         }
       }
@@ -300,8 +300,7 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
           return
         }
         const name = event.properties.name.trim().toLowerCase()
-        const argsFromName = name.startsWith("tts:") ? name.slice(4).trim() : ""
-        const args = argsFromName || event.properties.arguments.trim().toLowerCase()
+        const args = event.properties.arguments.trim().toLowerCase()
         await applyTtsCommand(args)
       }
     },

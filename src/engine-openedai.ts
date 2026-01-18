@@ -45,7 +45,8 @@ export async function checkOpenedAIServer(config: TtsConfig): Promise<boolean> {
 async function synthesizeChunk(
   text: string,
   index: number,
-  config: TtsConfig
+  config: TtsConfig,
+  providerOptions: Record<string, unknown>
 ): Promise<string> {
   const response = await fetch(`${config.httpUrl}/v1/audio/speech`, {
     method: "POST",
@@ -56,6 +57,7 @@ async function synthesizeChunk(
       voice: config.voice || "alloy",
       speed: config.speed || 1.0,
       response_format: config.httpFormat || "wav",
+      ...providerOptions,
     }),
   })
 
@@ -81,7 +83,24 @@ export async function speakOpenedAI(text: string, config: TtsConfig, client?: To
   const chunks = splitTextIntoChunks(trimmed)
   if (chunks.length === 0) return
 
-  const synthesisPromises = chunks.map((chunk, i) => synthesizeChunk(chunk, i, config))
+  const providerOptions: Record<string, unknown> = { ...(config.providerOptions || {}) }
+
+  // Handle speaker_wav to base64 conversion for voice cloning
+  if (
+    typeof providerOptions.speaker_wav === "string" &&
+    (await Bun.file(providerOptions.speaker_wav as string).exists())
+  ) {
+    try {
+      const file = Bun.file(providerOptions.speaker_wav as string)
+      const arrayBuffer = await file.arrayBuffer()
+      const base64 = Buffer.from(arrayBuffer).toString("base64")
+      providerOptions.speaker_wav = base64
+    } catch (e) {
+      console.warn(`[TTS] Failed to read speaker_wav file: ${providerOptions.speaker_wav}`, e)
+    }
+  }
+
+  const synthesisPromises = chunks.map((chunk, i) => synthesizeChunk(chunk, i, config, providerOptions))
 
   const files: string[] = []
 

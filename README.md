@@ -51,7 +51,7 @@ docker run -d -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
 2. Configure the plugin to use HTTP backend by editing `~/.config/opencode/tts.jsonc` or switching profiles:
 
 ```bash
-/tts:profile kokoro-gpu
+/tts profile kokoro-gpu
 ```
 
 ## Requirements

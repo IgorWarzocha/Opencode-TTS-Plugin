@@ -54,7 +54,8 @@ export async function checkKokoroServer(config: TtsConfig): Promise<boolean> {
 async function synthesizeChunk(
   text: string,
   index: number,
-  config: TtsConfig
+  config: TtsConfig,
+  providerOptions: Record<string, unknown>
 ): Promise<string> {
   const response = await fetch(`${config.httpUrl}/v1/audio/speech`, {
     method: "POST",
@@ -65,6 +66,7 @@ async function synthesizeChunk(
       voice: config.voice || "af_heart",
       speed: config.speed || 1.0,
       response_format: config.httpFormat || "wav",
+      ...providerOptions,
     }),
   })
 
@@ -90,7 +92,8 @@ export async function speakKokoro(text: string, config: TtsConfig, client?: Toas
   const chunks = splitTextIntoChunks(trimmed)
   if (chunks.length === 0) return
 
-  const synthesisPromises = chunks.map((chunk, i) => synthesizeChunk(chunk, i, config))
+  const providerOptions: Record<string, unknown> = { ...(config.providerOptions || {}) }
+  const synthesisPromises = chunks.map((chunk, i) => synthesizeChunk(chunk, i, config, providerOptions))
 
   const files: string[] = []
 

@@ -15,17 +15,11 @@ export const extractTextPart = (parts: Array<{ type: string; text?: string }>): 
 export const parseTtsCommand = (text: string): string | null => {
   const trimmed = text.trim()
   if (!trimmed.startsWith("/tts")) return null
-  const tail = trimmed.slice(4).trim()
-  if (tail.startsWith(":")) {
-    return tail.slice(1).trim()
-  }
-  return tail
+  return trimmed.slice(4).trim()
 }
 
 export const normalizeCommandArgs = (raw: string): string => {
-  const cleaned = raw.trim().toLowerCase()
-  if (cleaned.startsWith(":")) return cleaned.slice(1).trim()
-  return cleaned
+  return raw.trim().toLowerCase()
 }
 
 /**
