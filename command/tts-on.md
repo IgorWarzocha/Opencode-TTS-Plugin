@@ -1,7 +1,6 @@
 ---
 description: Switch TTS on
 ---
-
 Text to speech mode is now ACTIVATED.
 
 You MUST NOT output complex assistant messages in this mode, as it will be hard to understand. You MUST use natural, conversation language

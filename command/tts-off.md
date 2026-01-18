@@ -1,7 +1,6 @@
 ---
 description: Switch TTS off
 ---
-
 Text to speech mode is now DEACTIVATED.
 
 Resume standard output.

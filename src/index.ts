@@ -31,6 +31,7 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
   let latestMessageText: string | null = null
   let lastSpokenMessageID: string | null = null
   let ttsNotice = await loadTtsNotice(pluginRoot)
+  let lastCommand: { name: string; args: string } | null = null
 
   setTimeout(async () => {
     const success = await initTts(config)
@@ -232,22 +233,16 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
   return {
     "chat.message": async (input, output) => {
       activeSessionID = input.sessionID
-      
-      const isTtsCommand = output.parts.some((p) => p.type === "text" && p.text.includes("[TTS_COMMAND]"))
-      if (!isTtsCommand) return
 
-      // Extract command name and args from the prompt buffer or parts
-      const fullText = output.parts.filter(p => p.type === "text").map(p => p.text).join(" ")
-      const ttsMatch = fullText.match(/\/tts-([^\s]+)(?:\s+(.*))?/) || fullText.match(/\/tts(?:\s+(.*))?/)
-      
-      if (ttsMatch) {
-        const name = fullText.includes("/tts-") ? `tts-${ttsMatch[1]}` : "tts"
-        const args = ttsMatch[2] || ""
-        await applyTtsCommand(name, normalizeCommandArgs(args))
+      const hasMarker = output.parts.some((p) => p.type === "text" && p.text.includes("[TTS_COMMAND]"))
+      if (!hasMarker) return
 
-        // Replicate logic from gist: use client.session.prompt for internal messages
-        // tts-on/off MUST reach the model (via the prompt continuation)
-        // tts-profile MUST NOT reach the model (via noReply: true and throwing)
+      if (lastCommand) {
+        const { name, args } = lastCommand
+        lastCommand = null
+
+        await applyTtsCommand(name, args)
+
         if (name === "tts-profile") {
           await client.session.prompt({
             path: { id: input.sessionID },
@@ -258,8 +253,51 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
               parts: [{ type: "text", text: "TTS profile updated.", ignored: true }],
             },
           })
+
           throw new Error("__TTS_COMMAND_HANDLED__")
         }
+
+        return
+      }
+
+      const fullText = output.parts.filter((p) => p.type === "text").map((p) => p.text).join(" ")
+      const profileMatch = fullText.match(/\/tts-profile(?:\s+(.*))?/)
+      const onMatch = fullText.match(/\/tts-on/)
+      const offMatch = fullText.match(/\/tts-off/)
+
+      const cleanedMarkerText = fullText.replace(/\[TTS_COMMAND\]/g, "").trim()
+      const markerOnly = cleanedMarkerText.length === 0
+
+      const bufferedCommand = parseTtsCommand(promptState.buffer)
+      const bufferedArgs = bufferedCommand?.startsWith("profile") ? bufferedCommand.slice("profile".length).trim() : null
+
+      if (profileMatch || bufferedArgs !== null || markerOnly) {
+        const rawArgs = profileMatch ? profileMatch[1] || "" : bufferedArgs || ""
+        const args = normalizeCommandArgs(rawArgs)
+        promptState.buffer = ""
+        await applyTtsCommand("tts-profile", args)
+
+        await client.session.prompt({
+          path: { id: input.sessionID },
+          body: {
+            noReply: true,
+            agent: input.agent,
+            model: input.model,
+            parts: [{ type: "text", text: "TTS profile updated.", ignored: true }],
+          },
+        })
+
+        throw new Error("__TTS_COMMAND_HANDLED__")
+      }
+
+      if (onMatch) {
+        await applyTtsCommand("tts-on", "")
+        return
+      }
+
+      if (offMatch) {
+        await applyTtsCommand("tts-off", "")
+        return
       }
     },
     "experimental.chat.system.transform": async (_, output) => {
@@ -286,15 +324,27 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
         return
       }
 
-      if (event.type === "tui.command.execute") {
-        const command = event.properties.command.trim()
-        if (command === "prompt.clear") {
-          promptState.buffer = ""
-          return
-        }
+    if (event.type === "tui.command.execute") {
+      const command = event.properties.command.trim()
+      if (command === "prompt.clear") {
+        promptState.buffer = ""
+        return
       }
+    }
 
-      if (config.speakOn === "message" && event.type === "message.updated") {
+    if (event.type === "command.executed" && event.properties.name.startsWith("tts")) {
+      const name = event.properties.name.trim().toLowerCase()
+      const args = event.properties.arguments.trim().toLowerCase()
+      if (name === "tts-profile") {
+        lastCommand = { name, args }
+        return
+      }
+      await applyTtsCommand(name, args)
+      return
+    }
+
+    if (config.speakOn === "message" && event.type === "message.updated") {
+
         const msg = event.properties.info
         const isChild = await isChildSession(msg.sessionID)
         if (isChild) return
@@ -313,11 +363,7 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
         return
       }
 
-      if (event.type === "command.executed" && event.properties.name.startsWith("tts")) {
-        const name = event.properties.name.trim().toLowerCase()
-        const args = event.properties.arguments.trim().toLowerCase()
-        await applyTtsCommand(name, args)
-      }
+
     },
   }
 }
