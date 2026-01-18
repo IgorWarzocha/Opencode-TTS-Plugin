@@ -72,9 +72,9 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
     })
   }, 5000)
 
-  const applyTtsCommand = async (args: string): Promise<void> => {
-    if (args.startsWith("profile ")) {
-      const profileName = args.slice(8).trim()
+  const applyTtsCommand = async (name: string, args: string): Promise<void> => {
+    if (name === "tts-profile" || args.startsWith("profile ")) {
+      const profileName = name === "tts-profile" ? args.trim() : args.slice(8).trim()
       const loaded = await loadConfig()
       const profiles = loaded.profiles
       
@@ -140,13 +140,14 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
       return
     }
 
-    const wantsOn = args.includes("on") || args.includes("enable")
-    const wantsOff = args.includes("off") || args.includes("disable")
+    const wantsOn = name === "tts-on" || args.includes("on") || args.includes("enable")
+    const wantsOff = name === "tts-off" || args.includes("off") || args.includes("disable")
 
     let nextEnabled = config.enabled
     if (wantsOn) nextEnabled = true
     if (wantsOff) nextEnabled = false
-    if (!wantsOn && !wantsOff) nextEnabled = !config.enabled
+    if (!wantsOn && !wantsOff && (name === "tts-toggle" || args.includes("toggle"))) nextEnabled = !config.enabled
+    if (!wantsOn && !wantsOff && name === "tts") nextEnabled = !config.enabled
 
     const previous = {
       backend: config.backend,
@@ -182,14 +183,16 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
     }
 
     const status = config.enabled ? "enabled" : "disabled"
-    await client.tui.showToast({
-      body: {
-        title: "TTS Reader",
-        message: `TTS ${status}`,
-        variant: config.enabled ? "success" : "warning",
-        duration: 2000,
-      },
-    })
+    if (name !== "tts-on" && name !== "tts-off" && name !== "tts-profile") {
+      await client.tui.showToast({
+        body: {
+          title: "TTS Reader",
+          message: `TTS ${status}`,
+          variant: config.enabled ? "success" : "warning",
+          duration: 2000,
+        },
+      })
+    }
   }
 
   const speakText = async (messageID: string, text: string): Promise<void> => {
@@ -264,13 +267,16 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
           const args = parseTtsCommand(promptState.buffer)
           promptState.buffer = ""
           if (args !== null) {
-            await applyTtsCommand(args)
+            await applyTtsCommand("tts", args)
             return
           }
         }
         if (command.startsWith("tts")) {
           promptState.skipCommandExecuted = true
-          await applyTtsCommand(normalizeCommandArgs(command.slice(3)))
+          const parts = command.split(" ")
+          const name = parts[0]
+          const args = parts.slice(1).join(" ")
+          await applyTtsCommand(name, normalizeCommandArgs(args))
           return
         }
       }
@@ -301,7 +307,7 @@ export const TtsReaderPlugin: Plugin = async ({ client }) => {
         }
         const name = event.properties.name.trim().toLowerCase()
         const args = event.properties.arguments.trim().toLowerCase()
-        await applyTtsCommand(args)
+        await applyTtsCommand(name, args)
       }
     },
   }

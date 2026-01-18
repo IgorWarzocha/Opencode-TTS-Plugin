@@ -11,6 +11,7 @@ Simple TTS for OpenCode using [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro
 - Speaks assistant responses in message or idle mode
 - Local CPU or HTTP GPU backend
 - Toggle via `/tts-on` and `/tts-off`
+- Switch profiles via `/tts-profile <name>`
 - Cross-platform playback
 - 11 voice options
 
@@ -51,7 +52,7 @@ docker run -d -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
 2. Configure the plugin to use HTTP backend by editing `~/.config/opencode/tts.jsonc` or switching profiles:
 
 ```bash
-/tts profile kokoro-gpu
+/tts-profile kokoro-gpu
 ```
 
 ## Requirements
@@ -99,10 +100,10 @@ Defaults are stored at `~/.config/opencode/tts.jsonc` on first run. Edit that fi
 
 ### Profile Switching
 
-You can switch between defined profiles at runtime using the `/tts` command:
+You can switch between defined profiles at runtime using the `/tts-profile` command:
 ```bash
-/tts profile openai
-/tts profile kokoro-gpu
+/tts-profile openai
+/tts-profile kokoro-gpu
 ```
 
 The plugin dynamically reloads command instructions from `.opencode/command/tts-on.md` if available in your project, or falls back to global/bundled defaults.
@@ -146,42 +147,10 @@ The plugin dynamically reloads command instructions from `.opencode/command/tts-
 }
 ```
 
-## Available Voices
+## Available Commands
 
-| Voice         | Description            |
-| ------------- | ---------------------- |
-| `af_heart`    | Female, warm (default) |
-| `af_bella`    | Female, clear          |
-| `af_nicole`   | Female, professional   |
-| `af_sarah`    | Female, friendly       |
-| `af_sky`      | Female, bright         |
-| `am_adam`     | Male, neutral          |
-| `am_michael`  | Male, deep             |
-| `bf_emma`     | British female         |
-| `bf_isabella` | British female         |
-| `bm_george`   | British male           |
-| `bm_lewis`    | British male           |
-
-## Speak Modes
-
-| Mode      | Behavior                                                    |
-| --------- | ----------------------------------------------------------- |
-| `message` | Speaks each assistant message as it completes (default)     |
-| `idle`    | Speaks only the final message when the session becomes idle |
-
-**Use `message`** for real-time feedback on every response.
-**Use `idle`** for less frequent speech, only after the assistant finishes all work.
-
-## How It Works
-
-1. Plugin tracks the latest assistant message text via `message.part.updated` events
-2. Depending on `speakOn` mode:
-   - **message**: Speaks when `message.updated` fires with a completed assistant message
-   - **idle**: Speaks when `session.idle` fires
-3. Local backend uses Bun subprocesses (see `maxWorkers`)
-4. Audio is played through your system's audio player
-5. Text is cleaned (code blocks replaced with "code block", markdown stripped)
-
-## License
-
-MIT
+- `/tts-on`: Enable the reader
+- `/tts-off`: Disable the reader
+- `/tts-profile <name>`: Switch to a different backend/voice profile
+- `/tts toggle`: Invert the current state (default)
+- `/tts profile <name>`: Alternative syntax for profiles (if `/tts` command file is present)
